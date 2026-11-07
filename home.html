@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>내 교환독서 · 책릴레이</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link rel="stylesheet" href="style.css"></head>
+<body><main class="app"><div class="pad stack">
+  <div class="d-flex justify-content-between align-items-start mb-3">
+    <div class="grow"><p class="xs muted mb-1">안녕하세요,</p>
+      <h1 class="serif fs-5 mb-0 text-dark">soiewer님의 교환독서</h1>
+    </div>
+    <a href="index.html" class="text-secondary p-1" title="로그아웃" style="display:flex;align-items:center">
+      <i data-lucide="log-out" style="width:20px;height:20px"></i>
+    </a>  
+  </div>
+  <form class="d-flex align-items-center gap-2 mb-3" action="waiting.html">
+    <input class="form-control flex-grow-1" style="font-size:14px; padding:10px 14px;" placeholder="초대 코드 입력">
+    <button type="submit" class="btn line" style="width: auto !important; flex-shrink: 0; white-space: nowrap; padding: 10px 18px; font-size: 14px;">
+      참여
+    </button>
+  </form>
+
+  <a href="room-reading.html" class="card room d-flex flex-row align-items-center gap-3 text-decoration-none">
+    <div class="cover red flex-shrink-0"><span>작별하지 않는다</span><span>한강</span></div>
+    <div class="flex-grow-1 min-w-0"><div class="d-flex align-items-center gap-2 mb-1"><h2 class="serif fs-6 mb-0 text-dark">작별하지 않는다</h2><span class="badge b-done">완독</span></div>
+      <p class="xs muted mb-2">지금 민지님이 읽는 중 · 2/4 완독</p><div class="bar"><i style="width:50%"></i></div></div>
+  </a>
+  <a href="waiting.html" class="card room d-flex flex-row align-items-center gap-3 text-decoration-none">
+    <div class="cover green flex-shrink-0"><span>불편한 편의점</span><span>김호연</span></div>
+    <div class="flex-grow-1 min-w-0"><h2>불편한 편의점</h2><p class="xs muted mb-2">대기실 · 3/3명 모임</p></div>
+  </a>
+  <a href="room-complete.html" class="card room d-flex flex-row align-items-center gap-3 text-decoration-none">
+    <div class="cover navy flex-shrink-0"><span>아몬드</span><span>손원평</span></div>
+    <div class="flex-grow-1 min-w-0"><div class="d-flex align-items-center gap-2 mb-1"><h2 class="serif fs-6 mb-0 text-dark">아몬드</h2><span class="badge b-done">완독</span></div>
+      <p class="xs muted mb-2">모두 완독했어요 · 히스토리 보기</p></div>
+  </a>
+  <a href="create.html" class="btn"><i data-lucide="plus"></i>새 교환독서 방 만들기</a>
+</div>
+<nav class="bottom-nav">
+  <a href="home.html" class="on"><i data-lucide="home"></i><span>홈</span></a>
+  <a href="create.html"><i data-lucide="plus-circle"></i><span>방 만들기</span></a>
+  <a href="shelf.html"><i data-lucide="book-marked"></i><span>내 서재</span></a>
+</nav>
+</main>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script>
+  lucide.createIcons();
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body></html>

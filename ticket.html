@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>완료 기념 티켓 · 책릴레이</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link rel="stylesheet" href="style.css"></head>
+<body><main class="app tk">
+<header class="top"><a class="back" href="room-complete.html"><i data-lucide="chevron-left"></i></a><h1>완료 기념 티켓</h1></header>
+<div class="pad stack">
+  <div class="ticket">
+    <!-- 상단 책 표지 + 타이틀 (d-flex로 가로 배치) -->
+    <div class="d-flex align-items-center gap-3">
+      <div class="cover md navy flex-shrink-0" style="box-shadow:none; border:1px solid #ffffff22">
+        <span>아몬드</span>
+        <span>손원평</span>
+      </div>
+      <div>
+        <p class="label mb-1">EXCHANGE READING</p>
+        <h2 class="serif fs-4 mb-1 text-white">아몬드</h2>
+        <p class="sm mb-0" style="opacity:.7">손원평</p>
+      </div>
+    </div>
+
+    <!-- 점선 절취선 -->
+    <div class="cut"></div>
+
+    <!-- 감상평 문구들 -->
+    <div class="q q1"><p class="serif mb-1">“누구나 각자의 방식으로 사랑한다”</p><p class="xs" style="opacity:.6">— soiewer</p></div>
+    <div class="q q2"><p class="serif mb-1">“삶은 원래 다 그런 거야”</p><p class="xs" style="opacity:.6">— 민지</p></div>
+    <div class="q q3"><p class="serif mb-1">“나는 아몬드가 작다”</p><p class="xs" style="opacity:.6">— 수빈</p></div>
+
+    <!-- 하단 참여자 및 완료일 (d-flex justify-content-between으로 양 끝 정렬) -->
+    <div class="d-flex justify-content-between align-items-end xs mt-3">
+      <div>
+        <p class="label mb-1">READERS</p>
+        <span>soiewer → 민지 → 수빈</span>
+      </div>
+      <div style="text-align:right">
+        <p class="label mb-1">COMPLETED</p>
+        <span style="font-family:monospace">2026.09.13</span>
+      </div>
+    </div>
+  </div>
+  <div><p class="sm muted" style="margin-bottom:8px">대표 감상 고르기</p>
+    <div class="chips"><input type="radio" name="q" id="q1" checked><label for="q1">soiewer</label><input type="radio" name="q" id="q2"><label for="q2">민지</label><input type="radio" name="q" id="q3"><label for="q3">수빈</label></div></div>
+  <button class="btn"><i data-lucide="download"></i>PNG 이미지로 저장</button>
+  <a href="shelf.html" class="btn line">내 서재에서 보기</a>
+</div>
+<nav class="bottom-nav">
+  <a href="home.html" class="on"><i data-lucide="home"></i><span>홈</span></a>
+  <a href="create.html"><i data-lucide="plus-circle"></i><span>방 만들기</span></a>
+  <a href="shelf.html"><i data-lucide="book-marked"></i><span>내 서재</span></a>
+</nav></main>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script>
+  lucide.createIcons();
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body></html>

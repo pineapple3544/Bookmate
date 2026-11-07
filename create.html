@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>방 만들기 · 책릴레이</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link rel="stylesheet" href="style.css"></head>
+<body><main class="app create">
+<header class="top"><a class="back" href="home.html"><i data-lucide="chevron-left"></i></a><h1>방 만들기</h1></header>
+<form class="pad stack" action="waiting.html">
+  <div class="preview"><div class="cover lg plum"><span>태도에 관하여</span><span>임경선</span></div></div>
+  <label class="field">책 제목<input class="input" placeholder="태도에 관하여" required></label>
+  <label class="field">저자<input class="input" placeholder="임경선" required></label>
+  <div><p class="field">표지 색</p>
+    <div class="swatches">
+      <input type="radio" name="c" id="c-red"><label for="c-red" class="red"></label>
+      <input type="radio" name="c" id="c-green"><label for="c-green" class="green"></label>
+      <input type="radio" name="c" id="c-navy"><label for="c-navy" class="navy"></label>
+      <input type="radio" name="c" id="c-ochre"><label for="c-ochre" class="ochre"></label>
+      <input type="radio" name="c" id="c-plum" checked><label for="c-plum" class="plum"></label>
+    </div></div>
+  <div><p class="field">참여 인원 (나 포함)</p>
+    <div class="stepper"><span>−</span><select><option>2명</option><option>3명</option><option selected>4명</option><option>5명</option><option>6명</option></select><span>＋</span></div></div>
+  <button class="btn">방 만들고 초대하기</button>
+</form>
+<nav class="bottom-nav">
+  <a href="home.html"><i data-lucide="home"></i><span>홈</span></a>
+  <a href="create.html"><i data-lucide="plus-circle"></i><span>방 만들기</span></a>
+  <a href="shelf.html"><i data-lucide="library"></i><span>내 서재</span></a>
+</nav>
+</main>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script>
+  lucide.createIcons();
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body></html>
