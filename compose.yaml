@@ -1,0 +1,67 @@
+name: bookmate
+services:
+  web:
+    image: node:24-bookworm-slim
+    working_dir: /app
+    user: "1000:1000"
+    environment:
+      HOST: 0.0.0.0
+      PORT: "5173"
+      API_ORIGIN: http://api:3000
+    ports:
+      - "127.0.0.1:5173:5173"
+    volumes:
+      - ./apps/room-prototype:/app:ro
+    command: ["node", "server.js"]
+    depends_on:
+      api:
+        condition: service_healthy
+  db:
+    image: postgres:17-bookworm
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?Create .env from .env.example}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+  migrate:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    command: ["npm", "run", "db:migrate"]
+    depends_on:
+      db:
+        condition: service_healthy
+  api:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      HOST: 0.0.0.0
+      PORT: "3000"
+    ports:
+      - "127.0.0.1:${PORT:-3000}:3000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:3000/health/ready').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+volumes:
+  postgres_data:

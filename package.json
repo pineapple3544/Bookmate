@@ -1,0 +1,34 @@
+{
+  "name": "bookmate",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "build": "npm run build -w @bookmate/contracts && npm run build -w @bookmate/api-client && npm run build -w @bookmate/server",
+    "typecheck": "npm run build -w @bookmate/contracts && npm run typecheck --workspaces --if-present",
+    "test": "npm run build -w @bookmate/contracts && npm run test --workspaces --if-present",
+    "db:generate": "prisma generate",
+    "db:validate": "prisma validate",
+    "db:migrate": "prisma migrate deploy",
+    "db:migrate:dev": "prisma migrate dev",
+    "dev:web": "npm run dev -w @bookmate/room-prototype"
+  },
+  "dependencies": {
+    "@prisma/client": "^7.0.0",
+    "@prisma/adapter-pg": "^7.0.0",
+    "dotenv": "^17.0.0"
+  },
+  "devDependencies": {
+    "prisma": "^7.0.0",
+    "typescript": "^5.9.0",
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.0"
+  }
+}

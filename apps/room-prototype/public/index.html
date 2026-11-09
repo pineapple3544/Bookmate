@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>독서방 · 시제품</title>
+    <link rel="stylesheet" href="./room.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="book-icon" aria-hidden="true"
+          ><svg
+            class="ui-icon"
+            aria-hidden="true"
+            xmlns="http://www.w3.org/2000/svg"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M12 5v16" />
+            <path
+              d="M20.001 19A2 2 0 0022 17V5a2 2 0 00-1.999-2L16 3.002A5 5 0 0012 5a5 5 0 00-4-2H4a2 2 0 00-2 2v12a2 2 0 001.999 2H8a5 5 0 014 2 5 5 0 014-2z"
+            />
+          </svg>
+        </span>
+        독서방
+        <span class="version">시제품</span>
+      </div>
+      <div class="top-actions">
+        <span class="local"><i></i> 로컬</span
+        ><button id="settings" class="icon-button" aria-label="설정">
+          <svg
+            class="ui-icon"
+            aria-hidden="true"
+            xmlns="http://www.w3.org/2000/svg"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M14 17H5" />
+            <path d="M19 7h-9" />
+            <circle cx="17" cy="17" r="3" />
+            <circle cx="7" cy="7" r="3" />
+          </svg>
+        </button>
+      </div>
+    </header>
+    <main>
+      <section class="world-panel" aria-label="픽셀 독서방">
+        <div class="room-heading">
+          <div>
+            <span class="eyebrow">독서방 1</span>
+            <h1>임시 문구1</h1>
+          </div>
+          <span class="room-count">4명</span>
+        </div>
+        <div class="canvas-wrap">
+          <canvas
+            id="room"
+            width="640"
+            height="400"
+            tabindex="0"
+            aria-label="독서방. 방향키로 이동하고 좌석을 누르거나 앉기 버튼을 사용하세요."
+          ></canvas>
+          <div class="room-overlay">
+            <span id="selected-label">사용자 1</span
+            ><span id="action-state">이동 가능</span>
+          </div>
+          <div id="toast" role="status" aria-live="polite"></div>
+        </div>
+        <div class="world-controls">
+          <div class="movement" aria-label="이동">
+            <button data-direction="left" aria-label="왼쪽 이동">
+              <svg
+                class="ui-icon"
+                aria-hidden="true"
+                xmlns="http://www.w3.org/2000/svg"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="m12 19-7-7 7-7" />
+                <path d="M19 12H5" />
+              </svg>
+            </button>
+            <button data-direction="up" aria-label="위로 이동">
+              <svg
+                class="ui-icon"
+                aria-hidden="true"
+                xmlns="http://www.w3.org/2000/svg"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="m5 12 7-7 7 7" />
+                <path d="M12 19V5" />
+              </svg>
+            </button>
+            <button data-direction="down" aria-label="아래로 이동">
+              <svg
+                class="ui-icon"
+                aria-hidden="true"
+                xmlns="http://www.w3.org/2000/svg"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M12 5v14" />
+                <path d="m19 12-7 7-7-7" />
+              </svg>
+            </button>
+            <button data-direction="right" aria-label="오른쪽 이동">
+              <svg
+                class="ui-icon"
+                aria-hidden="true"
+                xmlns="http://www.w3.org/2000/svg"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M5 12h14" />
+                <path d="m12 5 7 7-7 7" />
+              </svg>
+            </button>
+          </div>
+          <button id="sit" class="button secondary">앉기</button
+          ><button id="record" class="button primary">내 기록</button>
+        </div>
+        <details id="chat-panel" open>
+          <summary>채팅 <span id="chat-unread"></span></summary>
+          <div class="chat-content">
+            <button id="chat-older" class="chat-older" hidden>이전 대화</button>
+            <div
+              id="chat-log"
+              role="log"
+              aria-label="채팅 기록"
+              aria-live="polite"
+              tabindex="0"
+            ></div>
+            <form id="chat-form">
+              <label for="chat-input" id="chat-sender">사용자 1</label>
+              <div class="chat-compose">
+                <textarea
+                  id="chat-input"
+                  rows="1"
+                  maxlength="500"
+                  placeholder="메시지"
+                  aria-label="채팅 메시지"
+                  required
+                ></textarea
+                ><button id="chat-send" class="button primary" type="submit">
+                  전송
+                </button>
+              </div>
+              <span id="chat-status" role="status"></span>
+            </form>
+          </div>
+        </details>
+      </section>
+      <aside class="sidebar">
+        <section class="book-section">
+          <span class="eyebrow">책 정보</span>
+          <div class="book-detail">
+            <div class="cover" aria-hidden="true">
+              <span>임시<br />문구1</span>
+              <div class="cover-art"></div>
+              <small>01</small>
+            </div>
+            <div>
+              <h2>임시 문구1</h2>
+              <p class="muted">현재 책 소유자</p>
+              <strong id="holder">사용자 1</strong>
+            </div>
+          </div>
+        </section>
+        <section class="members-section">
+          <div class="section-title">
+            <h2>참가자</h2>
+            <span>선택</span>
+          </div>
+          <div id="members"></div>
+        </section>
+        <section class="note-section">
+          <div class="section-title">
+            <h2>내 기록</h2>
+            <span id="note-page">p. 1</span>
+          </div>
+          <button id="note-preview" class="note-preview">임시 문구2</button>
+        </section>
+        <button id="complete" class="button primary completion">
+          독서 완료
+        </button>
+      </aside>
+    </main>
+    <dialog id="record-dialog">
+      <form id="record-form">
+        <div class="dialog-heading">
+          <h2>내 기록</h2>
+          <button type="button" class="icon-button close" aria-label="닫기">
+            <svg
+              class="ui-icon"
+              aria-hidden="true"
+              xmlns="http://www.w3.org/2000/svg"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M18 6 6 18" />
+              <path d="m6 6 12 12" />
+            </svg>
+          </button>
+        </div>
+        <label for="page">페이지</label
+        ><input id="page" type="number" min="1" max="99999" required />
+        <label for="note">내용</label
+        ><textarea id="note" maxlength="2000" rows="4"></textarea>
+        <label for="drawing">그림</label>
+        <canvas
+          id="drawing"
+          width="400"
+          height="180"
+          aria-label="페이지 그림. 마우스 또는 터치로 그립니다"
+        ></canvas>
+        <div class="record-actions">
+          <button id="clear-drawing" type="button" class="button secondary">
+            그림 지우기
+          </button>
+          <button id="delete-record" type="button" class="button secondary">
+            기록 삭제
+          </button>
+          <button type="submit" class="button primary">저장</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="settings-dialog">
+      <div class="dialog-heading">
+        <h2>설정</h2>
+        <button class="icon-button close" aria-label="닫기">
+          <svg
+            class="ui-icon"
+            aria-hidden="true"
+            xmlns="http://www.w3.org/2000/svg"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M18 6 6 18" />
+            <path d="m6 6 12 12" />
+          </svg>
+        </button>
+      </div>
+      <label class="toggle"
+        ><input id="motion" type="checkbox" /> 애니메이션</label
+      ><button id="reset" class="button secondary">방 상태 초기화</button>
+    </dialog>
+    <script type="module" src="./room.js"></script>
+  </body>
+</html>

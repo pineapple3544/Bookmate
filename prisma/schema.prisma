@@ -1,0 +1,78 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum RoomVisibility {
+  PUBLIC
+  PRIVATE
+}
+
+enum MemberRole {
+  ADMIN
+  MEMBER
+}
+
+enum ReadingStatus {
+  WAITING
+  READING
+  COMPLETED
+}
+
+model User {
+  id           String       @id @default(uuid()) @db.Uuid
+  email        String       @unique
+  passwordHash String
+  nickname     String
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  memberships RoomMember[]
+}
+
+model Room {
+  id          String         @id @default(uuid()) @db.Uuid
+  title       String
+  bookTitle   String
+  visibility  RoomVisibility @default(PRIVATE)
+  maxMembers  Int            @default(4)
+  version     Int            @default(0)
+  hostEpoch   BigInt         @default(0)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  members     RoomMember[]
+  prototypeChatMessages PrototypeChatMessage[]
+
+  @@index([visibility, createdAt])
+}
+
+model RoomMember {
+  roomId          String        @db.Uuid
+  userId          String        @db.Uuid
+  role            MemberRole    @default(MEMBER)
+  readingOrder    Int
+  readingStatus   ReadingStatus @default(WAITING)
+  readingStartedAt DateTime?
+  readingCompletedAt DateTime?
+  joinedAt        DateTime      @default(now())
+  room            Room          @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user            User          @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@id([roomId, userId])
+  @@unique([roomId, readingOrder])
+  @@index([userId])
+}
+
+model PrototypeChatMessage {
+  id         String   @id @db.Uuid
+  roomId     String   @db.Uuid
+  sequence   BigInt   @unique @default(autoincrement())
+  senderSlot Int
+  text       String
+  createdAt  DateTime @default(now())
+  room       Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, sequence])
+}
