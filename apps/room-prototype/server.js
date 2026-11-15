@@ -1,19 +1,62 @@
 import { createServer, request as proxyRequest } from "node:http";
 import { readFile } from "node:fs/promises";
-const apiOrigin = new URL(process.env.API_ORIGIN ?? "http://127.0.0.1:3000");
+import { exchangeApi } from "./exchange-api.js";
+const apiOrigin = new URL(process.env.API_ORIGIN || "http://127.0.0.1:3000");
 const routes = new Map([
-  ["/", ["index.html", "text/html; charset=utf-8"]],
+  ["/", ["home.html", "text/html; charset=utf-8"]],
+  ["/home.html", ["home.html", "text/html; charset=utf-8"]],
+  ["/room.html", ["index.html", "text/html; charset=utf-8"]],
+  ["/exchange.js", ["exchange.js", "text/javascript; charset=utf-8"]],
+  ["/rating.js", ["rating.js", "text/javascript; charset=utf-8"]],
+  [
+    "/exchange-client.js",
+    ["exchange-client.js", "text/javascript; charset=utf-8"],
+  ],
+  ["/exchange.css", ["exchange.css", "text/css; charset=utf-8"]],
   ["/room.css", ["room.css", "text/css; charset=utf-8"]],
+  ["/comment-book.png", ["comment-book.png", "image/png"]],
+  ["/avatar-shop-awning.png", ["avatar-shop-awning.png", "image/png"]],
   ["/room.js", ["room.js", "text/javascript; charset=utf-8"]],
+  ["/avatar.js", ["avatar.js", "text/javascript; charset=utf-8"]],
   ["/chat.js", ["chat.js", "text/javascript; charset=utf-8"]],
 ]);
 routes.set("/local-transport.js", [
   "local-transport.js",
   "text/javascript; charset=utf-8",
 ]);
+routes.set("/account.js", ["account.js", "text/javascript; charset=utf-8"]);
+routes.set("/live-client.js", [
+  "live-client.js",
+  "text/javascript; charset=utf-8",
+]);
+routes.set("/legacy-notes.js", [
+  "legacy-notes.js",
+  "text/javascript; charset=utf-8",
+]);
 routes.set("/records.js", ["records.js", "text/javascript; charset=utf-8"]);
 const server = createServer(async (request, response) => {
   const url = new URL(request.url, "http://localhost");
+  if (url.pathname === "/runtime-config.json") {
+    response.writeHead(200, {
+      "Content-Type": "application/json",
+      "Cache-Control": "no-store",
+    });
+    response.end(
+      JSON.stringify({
+        server: Boolean(process.env.API_ORIGIN),
+        localExchange: process.env.NODE_ENV !== "production",
+      }),
+    );
+    return;
+  }
+  if (url.pathname.startsWith("/api/exchanges")) {
+    if (process.env.NODE_ENV === "production") {
+      response.writeHead(404).end();
+      return;
+    }
+    await exchangeApi(request, response, url);
+    return;
+  }
   if (url.pathname.startsWith("/api/v1/")) {
     if (
       !["GET", "POST", "PATCH", "DELETE", "OPTIONS"].includes(request.method)
@@ -57,7 +100,11 @@ const server = createServer(async (request, response) => {
     request.pipe(upstream);
     return;
   }
-  const route = routes.get(url.pathname);
+  const route = routes.get(
+    url.pathname === "/" && url.searchParams.get("mode") === "server"
+      ? "/room.html"
+      : url.pathname,
+  );
   if (!route) {
     response.writeHead(404).end();
     return;
@@ -122,8 +169,6 @@ server.listen(
   Number(process.env.PORT ?? 5173),
   process.env.HOST ?? "127.0.0.1",
   () => {
-    console.log(
-      "Room prototype http://localhost:" + (process.env.PORT ?? 5173),
-    );
+    console.log("Room prototype http://localhost:" + server.address().port);
   },
 );

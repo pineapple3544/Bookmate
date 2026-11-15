@@ -1,12 +1,15 @@
+import { serverMode, account } from "./account.js";
 // Local transport shares data only within this browser profile and origin.
 export const localMode =
-  new URLSearchParams(location.search).get("mode") !== "server";
-const presencePrefix = "bookmate-presence-v1:";
+  new URLSearchParams(location.search).get("mode") !== "server" && !(serverMode && new URLSearchParams(location.search).has("code"));
+const code = new URLSearchParams(location.search).get("code");
+const roomSuffix = /^[A-F0-9]{8}$/i.test(code ?? "") ? ":" + code.toUpperCase() : "";
+const presencePrefix = "bookmate-presence-v1" + roomSuffix + ":";
 let database;
 export function openDatabase() {
   if (!database)
     database = new Promise((resolve, reject) => {
-      const request = indexedDB.open("bookmate-local-v1", 2);
+      const request = indexedDB.open("bookmate-local-v1" + roomSuffix + (serverMode && account && roomSuffix ? ":" + account.id : ""), 2);
       request.onupgradeneeded = () => {
         if (!request.result.objectStoreNames.contains("records"))
           request.result.createObjectStore("records", {
@@ -48,7 +51,7 @@ function onlineSlots() {
         Date.now() - value.time < 25000 &&
         Number.isInteger(value.slot) &&
         value.slot >= 0 &&
-        value.slot < 4
+        value.slot < (roomSuffix ? 10 : 4)
       )
         slots.add(value.slot);
       else localStorage.removeItem(key);
@@ -84,7 +87,7 @@ export async function localRequest(url, options = {}) {
       body.text.trim().length > 500 ||
       !Number.isInteger(body.senderSlot) ||
       body.senderSlot < 0 ||
-      body.senderSlot > 3 ||
+      body.senderSlot >= (roomSuffix ? 10 : 4) ||
       typeof body.id !== "string"
     )
       throw new Error("Invalid message");

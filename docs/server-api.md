@@ -133,3 +133,7 @@ docker compose run --rm --no-deps -e CORE_DB_TEST=1 -e CHAT_DB_TEST=1 api npm te
 API와 웹을 실행한 뒤 `npm run test:server-browser -w @bookmate/room-prototype`으로 실제 쿠키·동일 Origin HTTP/WS 프록시·방 생성/삭제·로그아웃을 검증합니다. Chromium 설치가 필요하며, 설치된 Chrome은 `BROWSER_CHANNEL=chrome`으로 선택합니다. 로컬 `.env` 또는 환경 변수의 DATABASE_URL로 접속해 테스트가 생성한 UUID 사용자·방만 정리합니다. 웹 주소는 BASE_URL로 지정합니다.
 
 WSL 개발 중에는 `docker compose up` 실행 터미널을 유지합니다. db/api/web에 unless-stopped 재시작 정책을 추가했지만 Windows 종료나 WSL 자체 종료 동안 서비스를 제공하지는 않습니다. 현재 개발 컴퓨터에서는 숨겨진 WSL 실행 프로세스로 세션을 유지하며, 중지는 저장소에서 `docker compose down`을 사용합니다.
+
+## 2026-11-15 화면 통합
+
+최신 홈·독서방·서재가 새 계정 API와 연결됐습니다. 기존 문서의 화면 미연동 상태는 [최신 통합 가이드](integration-20261115.md)로 대체합니다. 새 교환독서 방에는 별도 exchanges 진행 API를 사용하며 기존 일반 room API는 유지합니다.

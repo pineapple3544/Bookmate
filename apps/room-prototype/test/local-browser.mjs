@@ -18,7 +18,10 @@ context.on("page", (page) => {
   });
   page.on("dialog", (dialog) => dialog.accept());
 });
-const base = process.env.BASE_URL ?? "http://127.0.0.1:5173";
+const base = new URL(
+  "/room.html",
+  process.env.BASE_URL ?? "http://127.0.0.1:5173",
+).href;
 await context.route("**/api/**", (route) => route.abort());
 async function ready(page) {
   await page.goto(base);
@@ -82,59 +85,151 @@ try {
     () => document.querySelector(".room-count").textContent === "1명 온라인",
   );
   assert.ok((await a.locator(".member-avatar.offline").count()) === 3);
-  // Distinct page records and drawing survive reload; deleting one leaves the other.
+  // Publish a photo, then reply with a drawing over the original.
+  const image = await a.evaluate(() => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 80;
+    canvas.height = 60;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#f0dab9";
+    ctx.fillRect(0, 0, 80, 60);
+    return canvas.toDataURL().split(",")[1];
+  });
+  const file = {
+    name: "page.png",
+    mimeType: "image/png",
+    buffer: Buffer.from(image, "base64"),
+  };
+  async function selectPage(number) {
+    await a.locator("#page").fill(String(number));
+    await a.locator("#page").blur();
+    await a.waitForFunction(() => !document.querySelector("#page").disabled);
+  }
+  async function upload() {
+    await a.locator("#record-photo").setInputFiles(file);
+    await a.locator('#record-form [type="submit"]').click();
+    await a.locator("#record-dialog").waitFor({ state: "hidden" });
+  }
+  // Restore an earlier text/drawing row, then verify coexistence with photo posts.
+  await a.evaluate(async (image) => {
+    const { openDatabase } = await import("./local-transport.js");
+    const db = await openDatabase();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction("records", "readwrite");
+      tx.objectStore("records").put({
+        slot: 0,
+        page: 3,
+        text: "임시 문구7",
+        drawing: "data:image/png;base64," + image,
+      });
+      tx.oncomplete = resolve;
+      tx.onabort = () => reject(tx.error);
+    });
+  }, image);
   await a.locator("#record").click();
-  await a.locator("#page").fill("2");
-  await a.locator("#page").blur();
+  await a.locator("#text-records").click();
   await a.waitForFunction(
-    () => !document.querySelector('#record-form [type="submit"]').disabled,
+    () => !document.querySelector('#text-record-dialog [name="page"]').disabled,
   );
-  await a.locator("#note").fill("임시 문구2");
+  await a.locator('#text-record-dialog [name="page"]').fill("3");
+  await a.locator('#text-record-dialog [name="page"]').blur();
+  await a.waitForFunction(
+    () =>
+      document.querySelector('#text-record-dialog [name="text"]').value ===
+      "임시 문구7",
+  );
+  await a.locator('#text-record-dialog [name="text"]').fill("임시 문구8");
+  await a.locator('#text-record-dialog [type="submit"]').click();
+  await a.locator("#text-record-dialog").waitFor({ state: "hidden" });
+  await a.locator("#record-publish").click();
+  await selectPage(2);
+  await upload();
+  await a.locator(".record-open-post").filter({ hasText: "p. 2" }).click();
+  await a.locator("#reply-text").fill("사진 위에 표시했어요.");
+  await a.locator("#reply-photo").setInputFiles(file);
+  await a.locator("#reply-attach").click();
+  await a.locator("#toggle-drawing").click();
+  await a.locator("#drawing").scrollIntoViewIfNeeded();
   const drawing = await a.locator("#drawing").boundingBox();
   await a.mouse.move(drawing.x + 20, drawing.y + 20);
   await a.mouse.down();
   await a.mouse.move(drawing.x + 100, drawing.y + 60, { steps: 10 });
   await a.mouse.up();
   const png = await a.locator("#drawing").evaluate((el) => el.toDataURL());
-  await a.locator('#record-form [type="submit"]').click();
-  await a.waitForFunction(() => !document.querySelector("#record-dialog").open);
-  await a.locator("#record").click();
-  await a.locator("#page").fill("3");
-  await a.locator("#page").blur();
-  await a.waitForFunction(
-    () => !document.querySelector('#record-form [type="submit"]').disabled,
-  );
-  await a.locator("#note").fill("임시 문구3");
-  await a.locator('#record-form [type="submit"]').click();
-  await a.waitForFunction(() => !document.querySelector("#record-dialog").open);
+  assert.notEqual(png.split(",")[1], image);
+  await a.locator("#save-drawing").click();
+  await a.locator(".record-open-post .record-photo-layer").waitFor();
+  await a.locator('.record-reply [type="submit"]').click();
+  await a.waitForSelector(".record-comment");
+  assert.equal(await a.locator(".record-comment img").count(), 1);
+  await a.locator("#record-publish").click();
+  await selectPage(3);
+  await upload();
   await ready(a);
   await a.locator("#record").click();
-  await a.waitForFunction(
-    () => !document.querySelector('#record-form [type="submit"]').disabled,
-  );
-  assert.equal(await a.locator("#note").inputValue(), "임시 문구3");
-  await a.locator("#page").fill("2");
-  await a.locator("#page").blur();
-  await a.waitForFunction(
-    () =>
-      document.querySelector("#note").value === "임시 문구2" &&
-      !document.querySelector('#record-form [type="submit"]').disabled,
-  );
+  const second = a
+    .locator(".record-post")
+    .filter({ has: a.getByText("p. 2", { exact: true }) });
+  const third = a
+    .locator(".record-post")
+    .filter({ has: a.getByText("p. 3", { exact: true }) });
+  await third.getByAltText("p. 3 기록 사진", { exact: true }).waitFor();
+  await second.locator(".record-image:not(.record-photo-layer)").waitFor();
+  await second.locator(".record-open-post").click();
   assert.equal(
-    await a.locator("#drawing").evaluate((el) => el.toDataURL()),
-    png,
+    await a.locator(".record-comment p").textContent(),
+    "사진 위에 표시했어요.",
   );
-  await a.locator("#delete-record").click();
-  await a.waitForFunction(() => !document.querySelector("#record-dialog").open);
+  const photos = await a
+    .locator(".record-open-post[aria-pressed='true'] img, #record-detail img")
+    .evaluateAll(async (images) => {
+      const sources = [];
+      for (const img of images) {
+        const blob = await (await fetch(img.src)).blob();
+        const data = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.readAsDataURL(blob);
+        });
+        sources.push(data);
+      }
+      return sources;
+    });
+  assert.equal(photos[0].split(",")[1], image);
+  assert.equal(photos[1], png);
+  assert.equal(photos[2].split(",")[1], image);
+  await second.getByRole("button", { name: "p. 2 게시물 삭제" }).click();
+  await second.waitFor({ state: "detached" });
   const surviving = await a.evaluate(async () => {
     const { recordRequest } = await import("./records.js");
-    return [
-      await recordRequest("get", [0, 2]),
-      await recordRequest("get", [0, 3]),
-    ];
+    const records = await Promise.all([
+      recordRequest("get", [0, 2]),
+      recordRequest("get", [0, 3]),
+    ]);
+    return records.map((record) => record?.photo.type);
   });
   assert.equal(surviving[0], undefined);
-  assert.equal(surviving[1].text, "임시 문구3");
+  assert.equal(surviving[1], "image/png");
+  await a.locator("#text-records").click();
+  await a.waitForFunction(
+    () => !document.querySelector('#text-record-dialog [name="page"]').disabled,
+  );
+  await a.locator('#text-record-dialog [name="page"]').fill("3");
+  await a.locator('#text-record-dialog [name="page"]').blur();
+  await a.waitForFunction(
+    () =>
+      document.querySelector('#text-record-dialog [name="text"]').value ===
+      "임시 문구8",
+  );
+  await a.locator("#text-record-dialog [data-delete]").click();
+  await a.locator("#text-record-dialog").waitFor({ state: "hidden" });
+  const remainingPhoto = await a.evaluate(async () => {
+    const { recordRequest } = await import("./records.js");
+    const post = await recordRequest("get", [0, 3]);
+    return { type: post.photo.type, text: post.text };
+  });
+  assert.deepEqual(remainingPhoto, { type: "image/png", text: undefined });
+  await a.locator("#record-feed .close").click();
   // Concurrent inserts and retry IDs use IndexedDB transaction ordering.
   const results = await a.evaluate(async () => {
     const { localRequest } = await import("./local-transport.js");
@@ -181,7 +276,7 @@ try {
   assert.deepEqual(apiRequests, []);
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: no API; local chat persistence/pagination/retry; two-tab presence/movement; speech fade; page records/drawings/delete; offline send; responsive widths",
+    "PASS: no API; local chat persistence/pagination/retry; two-tab presence/movement; speech fade; page photos/replies/annotations/delete; offline send; responsive widths",
   );
 } finally {
   await context.close();

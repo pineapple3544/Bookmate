@@ -46,6 +46,12 @@ model Room {
   updatedAt   DateTime       @updatedAt
   members     RoomMember[]
   prototypeChatMessages PrototypeChatMessage[]
+  exchangeCode String? @unique
+  exchangeOwnerId String? @db.Uuid
+  author String @default("")
+  theme String @default("mint")
+  startedAt DateTime?
+  completedAt DateTime?
   bookHolderId String? @db.Uuid
   bookHolder User? @relation("BookHolder", fields: [bookHolderId], references: [id], onDelete: Restrict)
   invites RoomInvite[]
@@ -63,6 +69,11 @@ model RoomMember {
   readingStatus   ReadingStatus @default(WAITING)
   readingStartedAt DateTime?
   readingCompletedAt DateTime?
+  displayName String?
+  appearance Json?
+  rating Float?
+  review String @default("")
+  quote String @default("")
   joinedAt        DateTime      @default(now())
   room            Room          @relation(fields: [roomId], references: [id], onDelete: Cascade)
   user            User          @relation(fields: [userId], references: [id], onDelete: Restrict)

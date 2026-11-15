@@ -16,7 +16,7 @@ type RoomState = {
   epoch: string;
   queue: Promise<void>;
   pending: number;
-  positions: Map<string, { x: number; y: number }>;
+  positions: Map<string, { x: number; y: number; seat: number | null }>;
 };
 
 // One API process owns realtime connections. Persistent epochs fence old hosts
@@ -190,18 +190,28 @@ export function registerRealtime(
               message.x < 24 ||
               message.x > 616 ||
               message.y < 160 ||
-              message.y > 376
+              message.y > 376 ||
+              (message.seat !== undefined &&
+                message.seat !== null &&
+                (!Number.isInteger(message.seat) ||
+                  message.seat < 0 ||
+                  message.seat > 11))
             ) {
               send(sender, { type: "error", code: "INVALID_POSITION" });
               return;
             }
-            current.positions.set(sender.uid, { x: message.x, y: message.y });
+            current.positions.set(sender.uid, {
+              x: message.x,
+              y: message.y,
+              seat: message.seat ?? null,
+            });
             for (const recipient of current.peers)
               send(recipient, {
                 type: "move",
                 userId: sender.uid,
                 x: message.x,
                 y: message.y,
+                seat: message.seat ?? null,
               });
           } else {
             if (message.hostEpoch !== current.epoch) {

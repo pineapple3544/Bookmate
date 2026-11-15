@@ -41,9 +41,11 @@ jobs:
             sleep 1
           done
           npm run test:browser -w @bookmate/room-prototype
+          npm run test:legacy-browser -w @bookmate/room-prototype
       - name: Authenticated browser integration
         env:
           WEB_ORIGINS: http://127.0.0.1:5173
+          API_ORIGIN: http://127.0.0.1:3000
         run: |
           node apps/server/dist/index.js > /tmp/bookmate-api.log 2>&1 &
           API_PID=$!
@@ -55,3 +57,4 @@ jobs:
             sleep 1
           done
           npm run test:server-browser -w @bookmate/room-prototype
+          npm run test:exchange-browser -w @bookmate/room-prototype

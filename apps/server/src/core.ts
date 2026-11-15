@@ -4,15 +4,9 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { PrismaClient, Prisma } from "@prisma/client";
 
 type Tx = Prisma.TransactionClient;
-export class ApiFailure extends Error {
-  constructor(
-    public statusCode: number,
-    public code: string,
-    message = code,
-  ) {
-    super(message);
-  }
-}
+import { ApiFailure } from "./errors.js";
+export { ApiFailure } from "./errors.js";
+import { registerExchanges } from "./exchanges.js";
 const fail = (status: number, code: string): never => {
   throw new ApiFailure(status, code);
 };
@@ -120,6 +114,7 @@ export async function registerCore(
       fail(403, "ORIGIN_DENIED");
   });
   const realtime = registerRealtime(app, db, userId, origins);
+  registerExchanges(app, db, userId);
   const credentials = object(
     {
       email: { type: "string", format: "email", maxLength: 254 },
@@ -338,6 +333,7 @@ export async function registerCore(
       return db.$transaction(async (tx) => {
         const room = await lock(tx, id);
         await member(tx, id, uid, true);
+        if (room.exchangeCode) fail(409, "USE_EXCHANGE_WORKFLOW");
         if (room.version !== req.body.version) fail(409, "VERSION_CONFLICT");
         if (
           req.body.maxMembers &&
@@ -394,6 +390,7 @@ export async function registerCore(
         id = req.params.roomId;
       return db.$transaction(async (tx) => {
         const room = await lock(tx, id);
+        if (room.exchangeCode) fail(409, "USE_EXCHANGE_WORKFLOW");
         const existing = await tx.roomMember.findUnique({
           where: memberKey(id, uid),
         });
@@ -466,17 +463,15 @@ export async function registerCore(
           },
         });
       });
-      return reply
-        .code(201)
-        .send({
-          invite: {
-            id: invite.id,
-            token: raw,
-            roomId: id,
-            expiresAt: invite.expiresAt,
-            maxUses: invite.maxUses,
-          },
-        });
+      return reply.code(201).send({
+        invite: {
+          id: invite.id,
+          token: raw,
+          roomId: id,
+          expiresAt: invite.expiresAt,
+          maxUses: invite.maxUses,
+        },
+      });
     },
   );
   app.delete<{ Params: { roomId: string; inviteId: string } }>(
@@ -512,6 +507,7 @@ export async function registerCore(
       await db.$transaction(async (tx) => {
         const room = await lock(tx, id),
           m = await member(tx, id, uid);
+        if (room.exchangeCode) fail(409, "USE_EXCHANGE_WORKFLOW");
         if (room.bookHolderId === uid) fail(409, "BOOK_HOLDER_CANNOT_LEAVE");
         if (
           m.role === "ADMIN" &&
@@ -558,6 +554,7 @@ export async function registerCore(
       return db.$transaction(async (tx) => {
         const room = await lock(tx, id),
           m = await member(tx, id, uid);
+        if (room.exchangeCode) fail(409, "USE_EXCHANGE_WORKFLOW");
         if (m.readingStatus === "COMPLETED") return { member: m };
         if (room.bookHolderId !== uid || m.readingStatus !== "READING")
           fail(409, "NOT_CURRENT_READER");
@@ -610,6 +607,7 @@ export async function registerCore(
             fail(409, "IDEMPOTENCY_CONFLICT");
           return { transfer: previous };
         }
+        if (room.exchangeCode) fail(409, "USE_EXCHANGE_WORKFLOW");
         if (room.version !== req.body.version) fail(409, "VERSION_CONFLICT");
         if (room.bookHolderId !== uid || m.readingStatus !== "COMPLETED")
           fail(409, "READING_NOT_COMPLETED");

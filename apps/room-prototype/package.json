@@ -5,9 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "node server.js",
-    "typecheck": "node --check server.js && node --check public/room.js && node --check public/chat.js && node --check public/local-transport.js && node --check public/records.js",
+    "typecheck": "node --check server.js && node --check public/room.js && node --check public/chat.js && node --check public/local-transport.js && node --check public/records.js && node --check public/account.js && node --check public/exchange-client.js && node --check public/exchange.js && node --check public/live-client.js && node --check public/legacy-notes.js",
     "test:browser": "node test/local-browser.mjs",
-    "test:server-browser": "node test/server-browser.mjs"
+    "test:server-browser": "node test/server-browser.mjs",
+    "test:exchange-browser": "node test/exchange-browser.mjs",
+    "test:legacy-browser": "node test/legacy-exchange-browser.mjs"
   },
   "devDependencies": {
     "playwright": "^1.65.0"
