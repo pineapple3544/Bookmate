@@ -23,7 +23,20 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env) {
       throw new Error("WEB_ORIGINS must contain exact HTTP(S) origins");
     }
   }
+  const secureCookies =
+    env.NODE_ENV === "production" || env.COOKIE_SECURE === "true";
+  if (
+    env.NODE_ENV === "production" &&
+    (!origins.length ||
+      origins.some((origin) => !origin.startsWith("https://")) ||
+      env.PROTOTYPE_CHAT_ENABLED === "true")
+  ) {
+    throw new Error(
+      "Production requires HTTPS origins and disabled prototype chat",
+    );
+  }
   return {
+    secureCookies,
     databaseUrl,
     port,
     host: env.HOST ?? "127.0.0.1",

@@ -14,11 +14,10 @@ routes.set("/local-transport.js", [
 routes.set("/records.js", ["records.js", "text/javascript; charset=utf-8"]);
 const server = createServer(async (request, response) => {
   const url = new URL(request.url, "http://localhost");
-  if (
-    url.pathname === "/api/v1/prototype/chat" ||
-    url.pathname === "/api/v1/prototype/chat/presence"
-  ) {
-    if (!["GET", "POST"].includes(request.method)) {
+  if (url.pathname.startsWith("/api/v1/")) {
+    if (
+      !["GET", "POST", "PATCH", "DELETE", "OPTIONS"].includes(request.method)
+    ) {
       response.writeHead(405).end();
       return;
     }
@@ -27,7 +26,11 @@ const server = createServer(async (request, response) => {
       {
         method: request.method,
         headers: {
-          "content-type": request.headers["content-type"] ?? "application/json",
+          ...(request.headers["content-type"]
+            ? { "content-type": request.headers["content-type"] }
+            : {}),
+          ...(request.headers.cookie ? { cookie: request.headers.cookie } : {}),
+          ...(request.headers.origin ? { origin: request.headers.origin } : {}),
         },
         timeout: 10000,
       },
@@ -35,6 +38,9 @@ const server = createServer(async (request, response) => {
         response.writeHead(result.statusCode ?? 502, {
           "content-type": "application/json; charset=utf-8",
           "cache-control": "no-store",
+          ...(result.headers["set-cookie"]
+            ? { "set-cookie": result.headers["set-cookie"] }
+            : {}),
         });
         result.pipe(response);
         result.on("error", () => response.destroy());
@@ -68,6 +74,49 @@ const server = createServer(async (request, response) => {
   } catch {
     response.writeHead(500).end();
   }
+});
+// Same-origin WebSocket tunnel for local frontend integration.
+server.on("upgrade", (request, socket, head) => {
+  const url = new URL(request.url, "http://localhost");
+  if (!/^\/api\/v1\/rooms\/[a-f0-9-]{36}\/live$/.test(url.pathname)) {
+    socket.destroy();
+    return;
+  }
+  const upstream = proxyRequest(new URL(url.pathname, apiOrigin), {
+    headers: request.headers,
+    timeout: 10000,
+  });
+  upstream.on("upgrade", (response, remote, remoteHead) => {
+    upstream.setTimeout(0);
+    socket.write(
+      "HTTP/1.1 101 Switching Protocols\r\n" +
+        response.rawHeaders.reduce(
+          (text, value, index, headers) =>
+            index % 2
+              ? text
+              : text + value + ": " + headers[index + 1] + "\r\n",
+          "",
+        ) +
+        "\r\n",
+    );
+    if (head.length) remote.write(head);
+    if (remoteHead.length) socket.write(remoteHead);
+    remote.on("error", () => socket.destroy());
+    socket.on("error", () => remote.destroy());
+    socket.on("close", () => remote.destroy());
+    remote.on("close", () => socket.destroy());
+    socket.pipe(remote).pipe(socket);
+  });
+  upstream.on("response", (response) => {
+    socket.end(
+      `HTTP/1.1 ${response.statusCode ?? 502} Rejected\r\nConnection: close\r\n\r\n`,
+    );
+    response.resume();
+  });
+  upstream.on("timeout", () => upstream.destroy());
+  upstream.on("error", () => socket.destroy());
+  socket.on("error", () => upstream.destroy());
+  upstream.end();
 });
 server.listen(
   Number(process.env.PORT ?? 5173),

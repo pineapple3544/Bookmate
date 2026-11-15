@@ -1,6 +1,7 @@
 name: bookmate
 services:
   web:
+    restart: unless-stopped
     image: node:24-bookworm-slim
     working_dir: /app
     user: "1000:1000"
@@ -17,6 +18,7 @@ services:
       api:
         condition: service_healthy
   db:
+    restart: unless-stopped
     image: postgres:17-bookworm
     environment:
       POSTGRES_USER: ${POSTGRES_USER:?Create .env from .env.example}
@@ -41,6 +43,7 @@ services:
       db:
         condition: service_healthy
   api:
+    restart: unless-stopped
     build: .
     env_file: .env
     environment:

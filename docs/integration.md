@@ -67,3 +67,7 @@ WebSocket 메시지의 구체적 형식은 인증과 세션 모델을 구현한 
 ## 로컬 시제품 전송 계층
 
 기본 UI는 `local-transport.js`로 IndexedDB 채팅과 localStorage 접속 정보를 조회하며 API를 호출하지 않습니다. `?mode=server`에서만 기존 API 경로를 사용합니다. 두 모드는 같은 메시지 응답 형태를 사용하고 자동 fallback이나 데이터 이관은 하지 않습니다. `records.js`는 사용자·페이지 복합 키로 글·그림을 브라우저에 저장합니다. `BroadcastChannel` 이동 공유는 동일 브라우저 내 테스트용이며 WebRTC가 아닙니다.
+
+## 2026-11-14 서버 API 추가
+
+실제 계정·세션·방·책 전달·인증 채팅과 실시간 연결은 [서버 API 가이드](server-api.md)를 기준으로 연동합니다. 기존 시제품 전용 경로와 구분합니다. @bookmate/api-client에 인증·방·초대·독서·채팅 메서드와 realtimeUrl을 추가했습니다.

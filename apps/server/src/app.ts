@@ -1,3 +1,7 @@
+import websocket from "@fastify/websocket";
+import rateLimit from "@fastify/rate-limit";
+import { ApiFailure, registerCore } from "./core.js";
+import type { PrismaClient } from "@prisma/client";
 import Fastify, { type FastifyError } from "fastify";
 import cors from "@fastify/cors";
 import swagger from "@fastify/swagger";
@@ -10,6 +14,8 @@ import type {
 import { registerChat, type ChatStore } from "./chat.js";
 
 interface AppOptions {
+  db?: PrismaClient;
+  secureCookies?: boolean;
   chatStore?: ChatStore;
   checkDatabase: () => Promise<void>;
   origins?: string[];
@@ -18,10 +24,21 @@ interface AppOptions {
 
 export async function buildApp(options: AppOptions) {
   const app = Fastify({
-    logger: options.logger ?? false,
+    logger: options.logger
+      ? {
+          ...(typeof options.logger === "object" ? options.logger : {}),
+          redact: [
+            "req.headers.cookie",
+            "req.headers.authorization",
+            "res.headers.set-cookie",
+          ],
+        }
+      : false,
     bodyLimit: 64 * 1024,
     requestTimeout: 10000,
   });
+  await app.register(websocket, { options: { maxPayload: 16 * 1024 } });
+  await app.register(rateLimit, { max: 300, timeWindow: "1 minute" });
   await app.register(cors, {
     origin: options.origins ?? [],
     credentials: true,
@@ -33,6 +50,26 @@ export async function buildApp(options: AppOptions) {
     },
   });
   app.setErrorHandler<FastifyError>((error, request, reply) => {
+    if (error instanceof ApiFailure)
+      return reply
+        .code(error.statusCode)
+        .send({
+          error: {
+            code: error.code,
+            message: error.message,
+            requestId: request.id,
+          },
+        });
+    if (error.code === "P2002")
+      return reply
+        .code(409)
+        .send({
+          error: {
+            code: "CONFLICT",
+            message: "Resource already exists",
+            requestId: request.id,
+          },
+        });
     const status =
       error.statusCode && error.statusCode >= 400 && error.statusCode < 500
         ? error.statusCode
@@ -40,7 +77,12 @@ export async function buildApp(options: AppOptions) {
     if (status >= 500) request.log.error({ err: error }, "Request failed");
     const body: ApiError = {
       error: {
-        code: status < 500 ? "BAD_REQUEST" : "INTERNAL_ERROR",
+        code:
+          status === 429
+            ? "RATE_LIMITED"
+            : status < 500
+              ? "BAD_REQUEST"
+              : "INTERNAL_ERROR",
         message:
           status < 500 ? "Invalid request" : "An internal error occurred",
         requestId: request.id,
@@ -124,6 +166,13 @@ export async function buildApp(options: AppOptions) {
   app.get("/openapi.json", { schema: { hide: true } }, async () =>
     app.swagger(),
   );
+  if (options.db)
+    await registerCore(
+      app,
+      options.db,
+      options.origins ?? [],
+      options.secureCookies ?? false,
+    );
   if (options.chatStore) registerChat(app, options.chatStore);
   return app;
 }

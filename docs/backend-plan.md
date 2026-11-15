@@ -39,3 +39,7 @@ PostgreSQL 백업·복원, 키 보호 비밀값 복구, HTTPS/WSS, TURN 인증·
 - Fastify 5 https://fastify.dev/docs/latest/
 - Prisma 7 설정 https://www.prisma.io/docs/orm/v7/reference/prisma-config-reference
 - Prisma PostgreSQL 드라이버 https://www.prisma.io/docs/orm/v7/core-concepts/supported-databases/database-drivers
+
+## 2026-11-14 구현 현황
+
+2~3단계의 계정 세션·방 CRUD·초대·권한·독서 완료·책 전달과 4단계의 단일 프로세스 WebSocket·접속 상태·Host epoch·시그널링을 구현하고 DB 통합 테스트로 확인했습니다. 공유 Host lease, 안정성 점수 선출, 키 관리와 P2P 복제는 아직 후속 단계입니다. 상세 제한은 server-api.md를 참고합니다.

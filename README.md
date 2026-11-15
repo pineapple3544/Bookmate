@@ -10,6 +10,12 @@ Docker만 사용할 경우 `docker compose -f compose.local.yaml up`으로 웹�
 
 아래는 API와 PostgreSQL을 함께 개발할 때의 설정입니다.
 
+## 실제 서버 API
+
+로그인·세션, 방 CRUD·초대·참가 권한, 읽는 순서·완료·책 전달, 영구 채팅, WebSocket 접속·아바타 이동·WebRTC 시그널링을 구현했습니다. [서버 API 연동 가이드](docs/server-api.md)에 전체 경로와 SDK 사용법이 있습니다. `docker compose up --build`로 API·DB·웹을 함께 실행합니다.
+
+실시간 Host는 단일 API 인스턴스 기준이며 브라우저 P2P 복제와 암호화 키 관리는 후속 작업입니다. 기존 픽셀 시제품 로그인 화면은 아직 연결하지 않았으므로 새 API는 팀 프런트엔드에서 연동합니다.
+
 ## 개발 환경
 
 - WSL Ubuntu의 `/home/nyko2/bookshare-wsl`
@@ -76,7 +82,7 @@ Docker API가 이미 실행 중이면 `docker compose stop api`로 3000번 포�
 
 서버 상태 확인, DB 연결 확인, OpenAPI JSON, 공통 오류 응답, 허용 Origin 설정, API 클라이언트와 시제품 채팅·접속 상태 API를 제공합니다. DB에는 사용자·방·참가자·채팅 모델이 있습니다. 기본 UI는 로컬 모드이며 서버 채팅은 `/?mode=server`로 선택합니다.
 
-인증, 방 CRUD, 책 전달, WebSocket, Host 승계, 키 발급, 브라우저 P2P와 동기화는 후속 구현 항목입니다. UI/UX 작업은 기존 팀 작업물을 연결합니다.
+인증·방 CRUD·책 전달·WebSocket과 단일 인스턴스 Host 교체를 추가했습니다. 키 발급·브라우저 P2P 데이터 복제·여러 서버 간 Host lease는 후속 항목입니다. UI/UX 작업은 팀 작업물을 연결합니다.
 
 ## Git
 

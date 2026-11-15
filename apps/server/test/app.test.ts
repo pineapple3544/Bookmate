@@ -60,3 +60,24 @@ test("invalid deployment configuration fails early", () => {
     readConfig({ DATABASE_URL: "postgresql://localhost/db", WEB_ORIGINS: "*" }),
   );
 });
+
+test("production rejects HTTP origins and unauthenticated prototype routes", () => {
+  const base = {
+    DATABASE_URL: "postgresql://localhost/db",
+    NODE_ENV: "production",
+  };
+  assert.throws(() =>
+    readConfig({ ...base, WEB_ORIGINS: "http://localhost:5173" }),
+  );
+  assert.throws(() =>
+    readConfig({
+      ...base,
+      WEB_ORIGINS: "https://book.example",
+      PROTOTYPE_CHAT_ENABLED: "true",
+    }),
+  );
+  assert.equal(
+    readConfig({ ...base, WEB_ORIGINS: "https://book.example" }).secureCookies,
+    true,
+  );
+});

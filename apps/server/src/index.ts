@@ -9,6 +9,8 @@ const config = readConfig();
 const db = createDatabase(config.databaseUrl);
 const app = await buildApp({
   origins: config.origins,
+  db,
+  secureCookies: config.secureCookies,
   ...(process.env.PROTOTYPE_CHAT_ENABLED === "true"
     ? { chatStore: createChatStore(db) }
     : {}),
