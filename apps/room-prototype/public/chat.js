@@ -281,7 +281,7 @@ export function createChat({
       if (slot !== getSelected()) void heartbeat();
     }
   }
-  const pollTimer = setInterval(poll, 1500);
+  const pollTimer = setInterval(poll, transport ? Math.max(1500, getUsers().length * 750) : 1500);
   const heartbeatTimer = setInterval(heartbeat, 8000);
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) {

@@ -9,8 +9,9 @@ let database;
 export function openDatabase() {
   if (!database)
     database = new Promise((resolve, reject) => {
-      const request = indexedDB.open("bookmate-local-v1" + roomSuffix + (serverMode && account && roomSuffix ? ":" + account.id : ""), 2);
+      const request = indexedDB.open("bookmate-local-v1" + roomSuffix + (serverMode && account && roomSuffix ? ":" + account.id : ""), 3);
       request.onupgradeneeded = () => {
+        for(const name of ["recordBodies","recordImports"]){if(!request.result.objectStoreNames.contains(name))request.result.createObjectStore(name,{keyPath:"id"});}
         if (!request.result.objectStoreNames.contains("records"))
           request.result.createObjectStore("records", {
             keyPath: ["slot", "page"],

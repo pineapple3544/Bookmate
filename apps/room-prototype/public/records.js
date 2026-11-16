@@ -1,9 +1,11 @@
+import { getSharedRecords } from "./record-bridge.js";
 import { attachNotes } from "./legacy-notes.js";
 import { openDatabase } from "./local-transport.js";
 
 const replyKey = reply => reply.id ?? reply.slot + ":" + reply.createdAt;
 
 export async function recordRequest(method, value) {
+  if(getSharedRecords())return getSharedRecords().request(method,value);
   const db = await openDatabase();
   return new Promise((resolve, reject) => {
     const tx = db.transaction("records", ["get", "list"].includes(method) ? "readonly" : "readwrite");
@@ -215,6 +217,7 @@ export function createRecords({ getSelected, getUsers, canOpen, onSave, memberNa
     if (refreshLocally) refreshPending = true;
   }
   if (channel) channel.onmessage = () => void refresh();
+  window.addEventListener("bookmate-records-updated",()=>void refresh());
 
   function renderPost(record) {
     const article = element("article", "", "record-post");
@@ -268,7 +271,7 @@ export function createRecords({ getSelected, getUsers, canOpen, onSave, memberNa
         }
         setBusy(true);
         try {
-          await recordRequest("delete", { key: [slot, record.page], postId: record.id });
+          await recordRequest(getSharedRecords() && !record.photo ? "delete-note" : "delete", { key: [slot, record.page], postId: record.id });
           changed();
         } catch (error) {
           feedback.textContent = error.message;

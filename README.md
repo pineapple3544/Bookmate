@@ -101,3 +101,7 @@ Windows Git 인증으로 최초 복제하고, 이 저장소의 로컬 Git 설정
 ## 픽셀 독서방 시제품
 
 실행 방법과 로컬/서버 모드 차이는 [시제품 README](apps/room-prototype/README.md), 디자인 변경은 [unslop 진단](docs/unslop-review.md)을 참고하세요.
+
+## P2P 기록 공유
+
+실제 계정 방의 사진·댓글·그림 공유를 WebRTC DataChannel로 연결했습니다. 서버는 권한과 기록 메타데이터만 관리합니다. 실행 방식, 복제본의 오프라인 제약 및 인터넷 배포용 TURN 설정은 [P2P 기록 공유](docs/p2p-records.md)를 참고하세요.

@@ -58,3 +58,4 @@ jobs:
           done
           npm run test:server-browser -w @bookmate/room-prototype
           npm run test:exchange-browser -w @bookmate/room-prototype
+          npm run test:p2p-browser -w @bookmate/room-prototype

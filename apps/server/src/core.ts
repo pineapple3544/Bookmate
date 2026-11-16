@@ -1,3 +1,4 @@
+import { registerRecordSync } from "./record-sync.js";
 import { registerRealtime } from "./realtime.js";
 import { randomBytes, createHash, scrypt, timingSafeEqual } from "node:crypto";
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -115,6 +116,7 @@ export async function registerCore(
   });
   const realtime = registerRealtime(app, db, userId, origins);
   registerExchanges(app, db, userId);
+  registerRecordSync(app, db, userId);
   const credentials = object(
     {
       email: { type: "string", format: "email", maxLength: 254 },

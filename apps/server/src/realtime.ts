@@ -1,8 +1,10 @@
+import { randomUUID } from "node:crypto";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { PrismaClient } from "@prisma/client";
 import type { WebSocket } from "ws";
 
 type Peer = {
+  id: string;
   socket: WebSocket;
   uid: string;
   request: FastifyRequest;
@@ -90,17 +92,24 @@ export function registerRealtime(
         );
       state.host = host;
     }
+    const readers = await db.roomMember.findMany({
+      where: { roomId: id, readingStatus: { in: ["READING", "COMPLETED"] } },
+      select: { userId: true },
+    });
     return {
+      recordReaders: readers.map((m) => m.userId),
       type: "presence",
       onlineUserIds: online,
       hostUserId: state.host,
       hostEpoch: state.epoch,
       positions: Object.fromEntries(state.positions),
+      peers: [...state.peers].map((p) => ({ peerId: p.id, userId: p.uid })),
     };
   }
   async function announce(id: string, state: RoomState) {
     const value = await refresh(id, state);
-    for (const peer of state.peers) send(peer, value);
+    for (const peer of state.peers)
+      send(peer, { ...value, selfPeerId: peer.id });
   }
   app.get<{ Params: { roomId: string } }>(
     "/api/v1/rooms/:roomId/live",
@@ -220,24 +229,45 @@ export function registerRealtime(
             }
             if (
               !["offer", "answer", "ice"].includes(message.kind) ||
-              typeof message.targetUserId !== "string" ||
+              (typeof message.targetUserId !== "string" &&
+                typeof message.targetPeerId !== "string") ||
               typeof message.payload !== "object" ||
               !message.payload
             ) {
               send(sender, { type: "error", code: "INVALID_SIGNAL" });
               return;
             }
-            const targets = [...current.peers].filter(
-              (p) => p.uid === message.targetUserId && p.uid !== sender.uid,
+            const targets = [...current.peers].filter((p) =>
+              message.targetPeerId
+                ? p.id === message.targetPeerId && p.id !== sender.id
+                : p.uid === message.targetUserId && p.uid !== sender.uid,
             );
             if (!targets.length) {
               send(sender, { type: "error", code: "PEER_OFFLINE" });
               return;
             }
+            if (message.targetPeerId) {
+              const readers = await db.roomMember.findMany({
+                where: {
+                  roomId: id,
+                  readingStatus: { in: ["READING", "COMPLETED"] },
+                },
+                select: { userId: true },
+              });
+              const allowed = new Set(readers.map((m) => m.userId));
+              if (
+                !allowed.has(sender.uid) ||
+                targets.some((p) => !allowed.has(p.uid))
+              ) {
+                send(sender, { type: "error", code: "RECORDS_LOCKED" });
+                return;
+              }
+            }
             for (const recipient of targets)
               send(recipient, {
                 type: "signal",
                 fromUserId: sender.uid,
+                fromPeerId: sender.id,
                 hostEpoch: current.epoch,
                 kind: message.kind,
                 payload: message.payload,
@@ -249,6 +279,7 @@ export function registerRealtime(
         const uid = await authenticate(req);
         if (socket.readyState !== 1) return;
         peer = {
+          id: randomUUID(),
           socket,
           uid,
           request: req,

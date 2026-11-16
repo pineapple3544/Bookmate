@@ -10,6 +10,13 @@ export const serverMode =
 export let account = null;
 let pendingAccount;
 const errors = {
+  RECORDS_LOCKED: "독서 차례가 되면 기록을 받을 수 있습니다",
+  ROOM_RECORD_LIMIT: "이 방의 기록 저장 한도에 도달했습니다",
+  POST_CHANGED: "게시물이 변경됐습니다. 다시 열어 주세요",
+  POST_EXISTS: "이 페이지에 이미 사진이 있습니다",
+  REPLY_MISSING: "댓글이 삭제됐습니다",
+  NOT_REPLY_OWNER: "내 댓글만 수정할 수 있습니다",
+  NOT_RECORD_OWNER: "내 기록만 수정할 수 있습니다",
   UNAUTHENTICATED: "로그인이 필요합니다",
   INVALID_CREDENTIALS: "이메일 또는 비밀번호를 확인해 주세요",
   CONFLICT: "이미 사용 중인 이메일입니다",

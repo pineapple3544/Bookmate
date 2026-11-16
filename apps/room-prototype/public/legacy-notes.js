@@ -1,3 +1,4 @@
+import { getSharedRecords } from "./record-bridge.js";
 import { openDatabase } from "./local-transport.js";
 // Retain the earlier text/drawing records alongside the team's photo feed.
 export function attachNotes({ getSelected, canOpen, onSave }) {
@@ -31,7 +32,7 @@ export function attachNotes({ getSelected, canOpen, onSave }) {
     status.textContent = "";
     try {
       const db = await openDatabase();
-      const record = await new Promise((resolve, reject) => {
+      const record = getSharedRecords() ? await getSharedRecords().request("get",[getSelected(),number]) : await new Promise((resolve, reject) => {
         const req = db
           .transaction("records")
           .objectStore("records")
@@ -131,7 +132,8 @@ export function attachNotes({ getSelected, canOpen, onSave }) {
     save.disabled = true;
     try {
       const db = await openDatabase();
-      await new Promise((resolve, reject) => {
+      if(getSharedRecords())await getSharedRecords().request(remove?"delete-note":"note",{key:[getSelected(),loaded],text:text.value.trim(),drawing:canvas.toDataURL("image/png")});
+      else await new Promise((resolve, reject) => {
         const tx = db.transaction("records", "readwrite"),
           store = tx.objectStore("records"),
           key = [getSelected(), loaded],

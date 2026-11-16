@@ -1,3 +1,6 @@
+import { createSharedRecords } from "./shared-records.js";
+import { setSharedRecords } from "./record-bridge.js";
+import { connectRecords } from "./p2p-records.js";
 import { serverMode, account } from "./account.js";
 import { createLiveRoom } from "./live-client.js";
 import { createRecords } from "./records.js";
@@ -839,6 +842,8 @@ $("#sit").addEventListener("click", () => {
     else toast("빈자리 없음");
   }
 });
+const sharedRecords = exchange && serverMode ? createSharedRecords(exchange) : null;
+if(sharedRecords)setSharedRecords(sharedRecords);
 const records = createRecords({
   getSelected: () => state.selected,
   getUsers: () => state.users,
@@ -1261,6 +1266,7 @@ const live = exchange && serverMode ? createLiveRoom({
   onPresence(slots){onlineSlots=new Set(slots);update();},
   onStatus(value){if(modeLabel)modeLabel.textContent=value;},
 }) : null;
+if(live && sharedRecords)connectRecords({room:exchange,live,store:sharedRecords});
 const chat = createChat({
   transport: live?.request,
   memberName,
@@ -1294,7 +1300,7 @@ if (exchange) {
     } catch {
       // Retain the last known turn while disconnected.
     }
-  }, 2500);
+  }, serverMode ? Math.max(2500, capacity * 1000) : 2500);
   addEventListener("pagehide", () => clearInterval(refresh), { once: true });
 }
 requestAnimationFrame(tick);

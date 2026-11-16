@@ -1,5 +1,10 @@
 import { apiRequest } from "./account.js";
 export function createLiveRoom({ room, onPosition, onPresence, onStatus }) {
+  const subscribers = new Set();
+  let snapshot;
+  const emit = (data) => {
+    for (const fn of subscribers) fn(data);
+  };
   const indices = new Map(room.members.map((m, i) => [m.id, i]));
   let socket,
     timer,
@@ -28,6 +33,8 @@ export function createLiveRoom({ room, onPosition, onPresence, onStatus }) {
       } catch {
         return;
       }
+      if (data.type === "presence") snapshot = data;
+      emit(data);
       if (data.type === "presence") {
         online = data.onlineUserIds.map(slot).filter((i) => i !== undefined);
         onPresence(online);
@@ -37,6 +44,8 @@ export function createLiveRoom({ room, onPosition, onPresence, onStatus }) {
         onPosition(slot(data.userId), data);
     };
     socket.onclose = (event) => {
+      snapshot = undefined;
+      emit({ type: "disconnected" });
       online = [];
       onPresence([]);
       onStatus(event.code === 1008 ? "재접속 필요" : "연결 끊김");
@@ -55,6 +64,24 @@ export function createLiveRoom({ room, onPosition, onPresence, onStatus }) {
   };
   window.addEventListener("pagehide", close, { once: true });
   return {
+    subscribe(fn) {
+      subscribers.add(fn);
+      if (snapshot) fn(snapshot);
+      return () => subscribers.delete(fn);
+    },
+    signal(targetPeerId, kind, payload) {
+      if (socket?.readyState !== WebSocket.OPEN || !snapshot) return false;
+      socket.send(
+        JSON.stringify({
+          type: "signal",
+          targetPeerId,
+          kind,
+          payload,
+          hostEpoch: snapshot.hostEpoch,
+        }),
+      );
+      return true;
+    },
     publish(user) {
       lastPosition = { x: user.x, y: user.y, seat: user.seat };
       if (socket?.readyState === WebSocket.OPEN)
