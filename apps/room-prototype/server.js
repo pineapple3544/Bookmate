@@ -1,10 +1,20 @@
 import { createServer, request as proxyRequest } from "node:http";
 import { readFile } from "node:fs/promises";
+import { exchangeApi } from "./exchange-api.js";
 const apiOrigin = new URL(process.env.API_ORIGIN ?? "http://127.0.0.1:3000");
 const routes = new Map([
-  ["/", ["index.html", "text/html; charset=utf-8"]],
+  ["/", ["home.html", "text/html; charset=utf-8"]],
+  ["/home.html", ["home.html", "text/html; charset=utf-8"]],
+  ["/room.html", ["index.html", "text/html; charset=utf-8"]],
+  ["/exchange.js", ["exchange.js", "text/javascript; charset=utf-8"]],
+  ["/rating.js", ["rating.js", "text/javascript; charset=utf-8"]],
+  ["/exchange-client.js", ["exchange-client.js", "text/javascript; charset=utf-8"]],
+  ["/exchange.css", ["exchange.css", "text/css; charset=utf-8"]],
   ["/room.css", ["room.css", "text/css; charset=utf-8"]],
+  ["/comment-book.png", ["comment-book.png", "image/png"]],
+  ["/avatar-shop-awning.png", ["avatar-shop-awning.png", "image/png"]],
   ["/room.js", ["room.js", "text/javascript; charset=utf-8"]],
+  ["/avatar.js", ["avatar.js", "text/javascript; charset=utf-8"]],
   ["/chat.js", ["chat.js", "text/javascript; charset=utf-8"]],
 ]);
 routes.set("/local-transport.js", [
@@ -14,6 +24,10 @@ routes.set("/local-transport.js", [
 routes.set("/records.js", ["records.js", "text/javascript; charset=utf-8"]);
 const server = createServer(async (request, response) => {
   const url = new URL(request.url, "http://localhost");
+  if (url.pathname.startsWith("/api/exchanges")) {
+    await exchangeApi(request, response, url);
+    return;
+  }
   if (
     url.pathname === "/api/v1/prototype/chat" ||
     url.pathname === "/api/v1/prototype/chat/presence"
@@ -51,7 +65,7 @@ const server = createServer(async (request, response) => {
     request.pipe(upstream);
     return;
   }
-  const route = routes.get(url.pathname);
+  const route = routes.get(url.pathname === "/" && url.searchParams.get("mode") === "server" ? "/room.html" : url.pathname);
   if (!route) {
     response.writeHead(404).end();
     return;

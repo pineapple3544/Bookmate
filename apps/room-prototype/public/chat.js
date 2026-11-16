@@ -1,5 +1,6 @@
 import { localMode, localRequest } from "./local-transport.js";
 export function createChat({
+  memberName = slot => "사용자 " + (slot + 1),
   getSelected,
   getUsers,
   viewport,
@@ -129,7 +130,7 @@ export function createChat({
       const heading = document.createElement("div");
       heading.className = "chat-message-heading";
       const name = document.createElement("strong");
-      name.textContent = "사용자 " + (message.senderSlot + 1);
+      name.textContent = memberName(message.senderSlot);
       const time = document.createElement("time");
       time.dateTime = message.createdAt;
       time.textContent = new Date(message.createdAt).toLocaleString("ko-KR", {
@@ -221,11 +222,11 @@ export function createChat({
       merge([data.message], true, data.serverTime);
       pending = null;
       input.value = "";
-      sendButton.textContent = "전송";
+      sendButton.setAttribute("aria-label", "메시지 보내기");
       status.textContent = "";
     } catch {
       status.textContent = "전송 실패";
-      sendButton.textContent = "재전송";
+      sendButton.setAttribute("aria-label", "메시지 다시 보내기");
     } finally {
       sending = false;
       input.disabled = false;
