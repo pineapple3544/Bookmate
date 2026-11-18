@@ -37,6 +37,19 @@ function appearance(input: any): Prisma.InputJsonObject {
     result.skinShade = Math.max(0, Math.min(100, input.skinShade));
   return result;
 }
+export function visibleReview(
+  member: {
+    userId: string;
+    rating: number | null;
+    review: string;
+    quote: string;
+  },
+  viewerId: string,
+  completedAt: Date | null,
+) {
+  if (!completedAt && member.userId !== viewerId) return {};
+  return { rating: member.rating, review: member.review, quote: member.quote };
+}
 function view(room: any, uid: string) {
   const me = room.members.findIndex((m: any) => m.userId === uid);
   return {
@@ -52,7 +65,7 @@ function view(room: any, uid: string) {
     version: room.version,
     me,
     isHost: room.exchangeOwnerId === uid,
-    members: room.members.map((m: any, index: number) => ({
+    members: room.members.map((m: any) => ({
       id: m.userId,
       name: m.displayName ?? m.user.nickname,
       isHost: room.exchangeOwnerId === m.userId,
@@ -61,9 +74,7 @@ function view(room: any, uid: string) {
             receivedAt: m.readingStartedAt,
             finishedAt: m.readingCompletedAt,
             appearance: m.appearance,
-            ...(room.completedAt || index === me
-              ? { rating: m.rating, review: m.review, quote: m.quote }
-              : {}),
+            ...visibleReview(m, uid, room.completedAt),
           }
         : {}),
     })),

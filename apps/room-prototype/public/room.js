@@ -1259,9 +1259,14 @@ function tick(time) {
 }
 const live = exchange && serverMode ? createLiveRoom({
   room: exchange,
-  onPosition(slot,position){
-    if(slot===state.selected)return;
-    Object.assign(state.users[slot],{x:position.x,y:position.y,seat:position.seat??null});update();
+  onPosition(slot, position) {
+    if (slot === state.selected) return;
+    const user = state.users[slot];
+    const seat = position.seat ?? null;
+    const seatChanged = user.seat !== seat;
+    Object.assign(user, { x: position.x, y: position.y, seat });
+    // The animation frame already draws coordinates. Only seating changes the sidebar.
+    if (seatChanged) update();
   },
   onPresence(slots){onlineSlots=new Set(slots);update();},
   onStatus(value){if(modeLabel)modeLabel.textContent=value;},

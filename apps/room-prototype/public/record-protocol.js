@@ -33,6 +33,10 @@ async function pack(value) {
   return value;
 }
 export async function encodeBody(method, value) {
+  if (isTombstone(method)) {
+    const { key, postId, replyId, author } = value;
+    value = { key, postId, replyId, author };
+  }
   const body = JSON.stringify({ method, value: await pack(value) });
   if (bytes(body).length > MAX_BODY) throw Error("기록 전송 크기 초과");
   return body;
@@ -116,6 +120,28 @@ export function validateBody(meta, data) {
     if (meta.kind === "edit-reply") text(v.text, 1000);
     if (meta.kind === "annotate") media(v.layer);
   }
+}
+export function isTombstone(kind) {
+  return kind === "delete" || kind === "delete-note" || kind === "delete-reply";
+}
+
+// The server supplies operations in sequence order. A later publication on the
+// same page starts a new lifetime, even if the author reuses an identifier.
+export function liveBodyIds(operations) {
+  const live = new Set(), pages = new Set(), notes = new Set(), replies = new Set();
+  for (const m of Array.from(operations).reverse()) {
+    const page = m.slot + ":" + m.page;
+    const reply = page + ":" + m.postId + ":" + m.replyId;
+    if (m.kind === "delete") pages.add(page);
+    else if (m.kind === "delete-note") notes.add(page);
+    else if (m.kind === "delete-reply") replies.add(reply);
+    else if (!pages.has(page) &&
+      !(m.kind === "note" && notes.has(page)) &&
+      !(["reply", "edit-reply"].includes(m.kind) && replies.has(reply))) {
+      live.add(m.id);
+    }
+  }
+  return live;
 }
 export function materialize(rows) {
   const records = new Map();

@@ -54,7 +54,7 @@ export function connectRecords({ room, live, store }) {
     return true;
   }
   function announce(p) {
-    if (!valid(p) || p.channel?.readyState !== "open") return;
+    if (!valid(p) || !p.ready || p.channel?.readyState !== "open") return;
     const ids = store.inventory();
     for (let i = 0; i < ids.length; i += 100)
       send(p, { type: "have", ids: ids.slice(i, i + 100) });
@@ -67,10 +67,11 @@ export function connectRecords({ room, live, store }) {
     }, 100);
   }
   function requestNext() {
+    if (inflight && !store.isLive(inflight.id)) drop(inflight.peer);
     if (inflight || !store.isAllowed()) return;
     for (const id of store.missing())
       for (const p of peers.values())
-        if (p.channel?.readyState === "open" && p.inventory.has(id)) {
+        if (p.ready && p.channel?.readyState === "open" && p.inventory.has(id)) {
           inflight = { id, peer: p.id, touched: Date.now() };
           send(p, { type: "want", id });
           report();
@@ -91,15 +92,16 @@ export function connectRecords({ room, live, store }) {
     }
   }
   async function upload(p, id) {
+    await store.pull(true);
     if (!valid(p)) return;
-    const body = store.get(id),
+    const body = await store.get(id),
       m = store.metadata(id);
-    if (!body || !m) return;
+    if (!body || !m || !valid(p) || !store.has(id)) return;
     const data = new TextEncoder().encode(body);
     send(p, { type: "body", id, bytes: data.length });
     for (let offset = 0; offset < data.length; offset += CHUNK) {
       await drain(p);
-      if (!valid(p) || p.channel.readyState !== "open")
+      if (!valid(p) || !store.has(id) || p.channel.readyState !== "open")
         throw Error("전송 연결 끊김");
       p.channel.send(data.slice(offset, offset + CHUNK));
     }
@@ -113,9 +115,12 @@ export function connectRecords({ room, live, store }) {
     ch.binaryType = "arraybuffer";
     ch.bufferedAmountLowThreshold = 128 * 1024;
     ch.onopen = () => {
-      announce(p);
-      requestNext();
-      report();
+      void store.pull(true).then(() => {
+        p.ready = true;
+        announce(p);
+        requestNext();
+        report();
+      }).catch(() => drop(p.id, p));
     };
     ch.onclose = () => drop(p.id, p);
     ch.onerror = () => drop(p.id, p);
@@ -130,6 +135,7 @@ export function connectRecords({ room, live, store }) {
             const rx = p.receive;
             if (
               !rx ||
+              !store.isLive(rx.id) ||
               !e.data.byteLength ||
               e.data.byteLength > CHUNK ||
               rx.offset + e.data.byteLength > rx.data.length
@@ -185,7 +191,7 @@ export function connectRecords({ room, live, store }) {
               p.receive ||
               inflight?.id !== msg.id ||
               inflight.peer !== p.id ||
-              !m ||
+              !store.isLive(msg.id) || !m ||
               msg.bytes !== m.bytes ||
               msg.bytes > MAX_BODY ||
               msg.bytes < 1

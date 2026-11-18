@@ -130,15 +130,15 @@ test(
         ).statusCode,
         403,
       );
+      const deletion = { ...op, id: randomUUID(), kind: "delete" };
+      const deleted = await call("POST", path, a, deletion);
+      assert.equal(deleted.statusCode, 201);
+      assert.equal(deleted.json().operation.bytes, deletion.bytes);
+      assert.equal(deleted.json().operation.digest, deletion.digest);
+      assert.equal((await call("POST", path, a, deletion)).statusCode, 200);
       assert.equal(
-        (
-          await call("POST", path, a, {
-            ...op,
-            id: randomUUID(),
-            kind: "delete",
-          })
-        ).statusCode,
-        201,
+        (await call("POST", path, a, { ...deletion, bytes: deletion.bytes + 1 })).statusCode,
+        409,
       );
       assert.equal(
         (

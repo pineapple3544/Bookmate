@@ -7,7 +7,7 @@ import type { PrismaClient, Prisma } from "@prisma/client";
 type Tx = Prisma.TransactionClient;
 import { ApiFailure } from "./errors.js";
 export { ApiFailure } from "./errors.js";
-import { registerExchanges } from "./exchanges.js";
+import { registerExchanges, visibleReview } from "./exchanges.js";
 const fail = (status: number, code: string): never => {
   throw new ApiFailure(status, code);
 };
@@ -74,7 +74,7 @@ export async function registerCore(
         ?.slice(cookieName.length + 1) ?? ""
     );
   }
-  async function userId(req: FastifyRequest) {
+  async function authenticatedSession(req: FastifyRequest) {
     const raw = token(req);
     if (!/^[a-f0-9]{64}$/.test(raw)) return fail(401, "UNAUTHENTICATED");
     const session = await db.session.findUnique({
@@ -82,7 +82,10 @@ export async function registerCore(
     });
     if (!session || session.expiresAt.getTime() <= Date.now())
       return fail(401, "UNAUTHENTICATED");
-    return session.userId;
+    return session;
+  }
+  async function userId(req: FastifyRequest) {
+    return (await authenticatedSession(req)).userId;
   }
   async function member(tx: Tx, roomId: string, uid: string, admin = false) {
     const value = await tx.roomMember.findUnique({
@@ -114,7 +117,7 @@ export async function registerCore(
     )
       fail(403, "ORIGIN_DENIED");
   });
-  const realtime = registerRealtime(app, db, userId, origins);
+  const realtime = registerRealtime(app, db, authenticatedSession, origins);
   registerExchanges(app, db, userId);
   registerRecordSync(app, db, userId);
   const credentials = object(
@@ -176,6 +179,7 @@ export async function registerCore(
           },
         });
       });
+      if (token(req)) realtime.revokeSession(hash(token(req)));
       reply.header("Set-Cookie", cookie(raw, 7 * 86400));
       return {
         user: { id: user.id, email: user.email, nickname: user.nickname },
@@ -189,7 +193,9 @@ export async function registerCore(
     }),
   }));
   app.post("/api/v1/auth/logout", async (req, reply) => {
-    await db.session.deleteMany({ where: { tokenHash: hash(token(req)) } });
+    const tokenHash = hash(token(req));
+    await db.session.deleteMany({ where: { tokenHash } });
+    realtime.revokeSession(tokenHash);
     return reply.header("Set-Cookie", cookie("", 0)).code(204).send();
   });
   app.get<{
@@ -291,18 +297,26 @@ export async function registerCore(
     { schema: { params } },
     async (req) => {
       const uid = await userId(req);
-      await member(db, req.params.roomId, uid);
-      const room = await db.room.findUnique({
-        where: { id: req.params.roomId },
+      const room = await db.room.findFirst({
+        where: { id: req.params.roomId, members: { some: { userId: uid } } },
         include: {
           members: {
             orderBy: { readingOrder: "asc" },
-            include: { user: { select: publicUser } },
+            select: {
+              roomId: true, userId: true, role: true, readingOrder: true,
+              readingStatus: true, readingStartedAt: true, readingCompletedAt: true,
+              displayName: true, appearance: true, joinedAt: true,
+              user: { select: publicUser }, rating: true, review: true, quote: true,
+            },
           },
         },
       });
-      if (!room) return fail(404, "ROOM_NOT_FOUND");
-      return { room: roomJson(room) };
+      if (!room) return fail(403, "NOT_A_MEMBER");
+      const members = room.members.map(({ rating, review, quote, ...member }) => ({
+        ...member,
+        ...visibleReview({ userId: member.userId, rating, review, quote }, uid, room.completedAt),
+      }));
+      return { room: roomJson({ ...room, members }) };
     },
   );
   app.patch<{

@@ -5,6 +5,7 @@ import {
   decodeBody,
   digestBody,
   materialize,
+  liveBodyIds,
   validateBody,
 } from "../public/record-protocol.js";
 test("binary record payload survives encoding; forged metadata/body mismatch is rejected", async () => {
@@ -82,4 +83,22 @@ test("ordered operations merge concurrent replies, own edits, annotations and du
   assert.equal(materialize(rows)[0].replies.length, 1);
   rows.push({ meta: meta("delete", 7) });
   assert.equal(materialize(rows).length, 0);
+});
+
+test("tombstones retire only preceding page, note or reply bodies", () => {
+  const events = [
+    ["note", 1], ["publish", 1], ["reply", 1, "old"], ["edit-reply", 1, "old"],
+    ["delete-reply", 1, "old"], ["reply", 1, "other"], ["delete-note", 1],
+    ["note", 1], ["publish", 2], ["note", 3], ["delete", 2], ["publish", 2],
+  ].map(([kind, page, replyId], i) => ({
+    id: String(i), sequence: String(i + 1), kind, slot: 0, page, postId: "p", replyId,
+  }));
+  assert.deepEqual([...liveBodyIds(events)].sort(), ["1", "11", "5", "7", "9"]);
+});
+
+test("deleting a legacy note never encodes the editor contents", async () => {
+  const body = await encodeBody("delete-note", {
+    key: [1, 7], text: "old private text", drawing: "old private drawing",
+  });
+  assert.deepEqual(decodeBody(body), { method: "delete-note", value: { key: [1, 7] } });
 });

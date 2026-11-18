@@ -161,6 +161,18 @@ test(
       const reading = (await call("GET", path, a.cookie)).json().room;
       assert.equal(reading.members[0].review, undefined);
       assert.ok(reading.members[1].receivedAt);
+      const detail = `/rooms/${room.id}`;
+      for (const route of [detail, path]) {
+        const other = (await call("GET", route, a.cookie)).json().room
+          .members[0];
+        for (const key of ["review", "quote", "rating"])
+          assert.equal(Object.hasOwn(other, key), false);
+        const own = (await call("GET", route, b.cookie)).json().room.members[0];
+        assert.equal(own.rating, 4.5);
+        assert.equal(own.review, "임시 문구3");
+        assert.equal(own.quote, "");
+      }
+      assert.equal((await call("GET", detail, c.cookie)).statusCode, 403);
       assert.equal(
         (await call("POST", path + "/finish", a.cookie, { rating: 0 }))
           .statusCode,
@@ -174,6 +186,14 @@ test(
         })
       ).json().room;
       assert.ok(done.completedAt);
+      for (const route of [detail, path]) {
+        const other = (await call("GET", route, b.cookie)).json().room
+          .members[1];
+        assert.deepEqual(
+          [other.rating, other.review, other.quote],
+          [5, "임시 문구4", "임시 문구5"],
+        );
+      }
       assert.equal(done.members[0].review, "임시 문구3");
       assert.equal(done.members[1].quote, "임시 문구5");
       assert.equal(

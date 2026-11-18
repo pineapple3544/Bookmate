@@ -181,6 +181,7 @@ export function createRecords({ getSelected, getUsers, canOpen, onSave, memberNa
     }
   }
   async function refresh() {
+    if (!feed.open && getSharedRecords()) return;
     if (busy || editingReply || activeReply?.dirty()) {
       refreshPending = true;
       return;
@@ -603,6 +604,14 @@ export function createRecords({ getSelected, getUsers, canOpen, onSave, memberNa
     if (feed.open) return;
     selectedPost = undefined;
     editingReply = undefined;
+    if (getSharedRecords()) {
+      generation++;
+      getSharedRecords().releaseView();
+      records = [];
+      releaseImages();
+      posts.replaceChildren();
+      detail.replaceChildren();
+    }
     toastAnimation?.cancel();
     toast.textContent = "";
     activeReply?.close();
@@ -630,6 +639,7 @@ export function createRecords({ getSelected, getUsers, canOpen, onSave, memberNa
       selectedPost = undefined;
       render();
       feed.showModal();
+      if (getSharedRecords()) void refresh();
     },
   };
 }

@@ -1,24 +1,28 @@
 import { apiRequest } from "./account.js";
-import { openDatabase } from "./local-transport.js";
+import { storage, unstagedKeys, stage, discard, cacheBody, redact } from "./record-storage.js";
 import {
   encodeBody,
   decodeBody,
   digestBody,
   validateBody,
   materialize,
+  liveBodyIds,
+  isTombstone,
 } from "./record-protocol.js";
 export function createSharedRecords(room) {
   const path = `/api/v1/rooms/${room.id}/record-ops`,
     meta = new Map(),
-    bodies = new Map(),
+    available = new Set(),
     decoded = new Map(),
     listeners = new Set();
   let cursor = "0",
     pulling,
+    live = new Set(),
+    initialKeys,
     writing = Promise.resolve(),
     stopped = false,
     allowed = false,
-    records = [],
+    viewGeneration = 0,
     revision = 0,
     migrating = false,
     lastPull = 0;
@@ -31,7 +35,7 @@ export function createSharedRecords(room) {
     lastError = "",
     transferring = 0;
   function report() {
-    const missing = [...meta.keys()].filter((id) => !decoded.has(id)).length;
+    const missing = [...live].filter((id) => !available.has(id)).length;
     status.dataset.missing = String(missing);
     status.dataset.peers = String(peers);
     status.textContent =
@@ -52,26 +56,6 @@ export function createSharedRecords(room) {
     window.dispatchEvent(new Event("bookmate-records-updated"));
     for (const fn of listeners) fn();
   }
-  async function storage(name, method, value) {
-    const db = await openDatabase();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(
-        name,
-        ["getAll", "get"].includes(method) ? "readonly" : "readwrite",
-      );
-      const req = tx.objectStore(name)[method](value);
-      let result;
-      req.onsuccess = () => (result = req.result);
-      tx.oncomplete = () => resolve(result);
-      tx.onabort = () => reject(tx.error ?? Error("브라우저 저장 실패"));
-    });
-  }
-  function rebuild() {
-    records = materialize(
-      [...meta.values()].map((m) => ({ meta: m, data: decoded.get(m.id) })),
-    );
-    notify();
-  }
   async function verify(m, body) {
     if (
       new TextEncoder().encode(body).length !== m.bytes ||
@@ -82,48 +66,95 @@ export function createSharedRecords(room) {
     validateBody(m, data);
     return data;
   }
+  // Availability comes from keys only. Read and verify individual bodies
+  // when the user views a page or a peer requests its bytes.
+  async function readBody(id) {
+    if (!live.has(id) || !available.has(id)) return;
+    const row = await storage("recordBodies", "get", id);
+    if (row) {
+      try {
+        const data = await verify(meta.get(id), row.body);
+        if (live.has(id)) return { body: row.body, data };
+        return;
+      } catch {
+        await storage("recordBodies", "delete", id);
+      }
+    }
+    available.delete(id);
+    decoded.delete(id);
+    notify();
+  }
+  async function view(key) {
+    const generation = viewGeneration;
+    const rows = [];
+    for (const m of meta.values()) {
+      if (key && (key[0] !== m.slot || key[1] !== m.page)) continue;
+      let data = decoded.get(m.id);
+      if (!data && live.has(m.id) && available.has(m.id)) {
+        data = (await readBody(m.id))?.data;
+        if (data && generation === viewGeneration && document.querySelector("#record-feed").open)
+          decoded.set(m.id, data);
+      }
+      rows.push({ meta: m, data });
+    }
+    const result = materialize(rows);
+    return key ? result[0] : result;
+  }
   let projectionDirty = false;
-  const loaded = storage("recordBodies", "getAll").then((rows) => {
-    for (const row of rows) bodies.set(row.id, row.body);
-  });
+  const retired = new Set(), pendingTombstones = [];
   async function pull(force = false) {
     if (pulling) return pulling;
     if (!force && allowed && Date.now() - lastPull < 1000) return;
     pulling = (async () => {
-      await loaded;
+      if (cursor === "0" && initialKeys === undefined) initialKeys = await unstagedKeys();
       let more = true;
       while (more) {
         const result = await apiRequest(path + "?after=" + cursor);
-        allowed = true;
-        lastError = "";
         for (const m of result.operations) {
           meta.set(m.id, m);
           cursor = m.sequence;
+          if (isTombstone(m.kind)) pendingTombstones.push(m);
           projectionDirty = true;
+        }
+        if (result.operations.length) {
+          const next = liveBodyIds(meta.values());
+          for (const id of [...live, ...result.operations.map((m) => m.id)]) {
+            if (!next.has(id)) {
+              retired.add(id);
+              available.delete(id);
+              decoded.delete(id);
+            }
+          }
+          live = next;
         }
         more = result.hasMore;
       }
-      // Re-read bodies absent from memory: another tab may have persisted them.
-      for (const m of meta.values())
-        if (!decoded.has(m.id)) {
-          const stored =
-            bodies.get(m.id) ??
-            (await storage("recordBodies", "get", m.id))?.body;
-          if (stored !== undefined) {
-            try {
-              decoded.set(m.id, await verify(m, stored));
-              bodies.set(m.id, stored);
-              projectionDirty = true;
-            } catch {
-              bodies.delete(m.id);
-              await storage("recordBodies", "delete", m.id);
-            }
-          }
+      if (retired.size || pendingTombstones.length) {
+        await redact(retired, pendingTombstones);
+        retired.clear();
+        pendingTombstones.length = 0;
+      }
+      if (initialKeys) {
+        for (const id of initialKeys)
+          if (!meta.has(id)) await discard(id);
+        initialKeys = null;
+      }
+      const keys = new Set(await storage("recordBodies", "getAllKeys"));
+      for (const id of live) {
+        if (keys.has(id) === available.has(id)) continue;
+        if (keys.has(id)) available.add(id);
+        else {
+          available.delete(id);
+          decoded.delete(id);
         }
+        projectionDirty = true;
+      }
+      allowed = true;
+      lastError = "";
       lastPull = Date.now();
       if (projectionDirty) {
         projectionDirty = false;
-        rebuild();
+        notify();
       } else report();
     })()
       .catch((error) => {
@@ -135,7 +166,55 @@ export function createSharedRecords(room) {
       .finally(() => (pulling = null));
     return pulling;
   }
-  async function commit(method, value) {
+
+  function registered(header) {
+    const m = meta.get(header.id);
+    return m?.actorSlot === room.me && m.kind === header.kind &&
+      m.slot === header.slot && m.page === header.page &&
+      (m.postId ?? null) === (header.postId ?? null) &&
+      (m.replyId ?? null) === (header.replyId ?? null) &&
+      (m.digest === header.digest || (isTombstone(m.kind) && m.bytes === 0));
+  }
+  async function submit(header, uncertain = false) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        await apiRequest(path, "POST", header);
+        break;
+      } catch (error) {
+        if (error.status >= 400 && error.status < 500 && error.status !== 408) {
+          if (uncertain) {
+            // An earlier transmission may already have committed. Only discard
+            // once a fresh authorized read confirms the operation is absent.
+            if (pulling) await pulling;
+            await pull(true);
+            if (registered(header)) break;
+          }
+          await discard(header.id);
+          throw error;
+        }
+        uncertain = true;
+        if (attempt === 1) throw error;
+      }
+    }
+    await storage("recordOutbox", "delete", header.id);
+  }
+  async function recover() {
+    const pending = await storage("recordOutbox", "getAll");
+    if (!pending.length) return pending;
+    await pull(true);
+    for (const header of pending) {
+      if (registered(header)) await storage("recordOutbox", "delete", header.id);
+      else await submit(header, true);
+    }
+    await pull(true);
+    return pending;
+  }
+  function enqueue(work) {
+    const job = writing.then(work);
+    writing = job.catch(() => {});
+    return job;
+  }
+  async function commit(method, value, recovered) {
     await pull(true);
     const body = await encodeBody(method, value),
       id = crypto.randomUUID();
@@ -158,45 +237,38 @@ export function createSharedRecords(room) {
           : {}),
     };
     validateBody({ ...header, actorSlot: room.me }, decodeBody(body));
-    await storage("recordBodies", "put", { id, body });
-    bodies.set(id, body);
-    try {
-      await apiRequest(path, "POST", header);
-    } catch (error) {
-      try {
-        await apiRequest(path, "POST", header);
-      } catch {
-        throw error;
-      }
-    }
+    // A caller can retry while recovery is finishing. An identical staged
+    // operation already has a durable ID and has just been acknowledged.
+    if (recovered.some((pending) => pending.kind === method && pending.digest === header.digest))
+      return view(value.key);
+    await stage(header, isTombstone(method) ? undefined : body);
+    await submit(header);
     await pull(true);
     if (!meta.has(id)) await pull(true);
-    return records.find(
-      (r) => r.slot === value.key[0] && r.page === value.key[1],
-    );
+    return view(value.key);
   }
   async function request(method, value) {
     if (["get", "list"].includes(method)) {
       await pull();
-      return method === "list"
-        ? records
-        : records.find((r) => r.slot === value[0] && r.page === value[1]);
+      return view(method === "list" ? undefined : value);
     }
-    const job = writing.then(() => commit(method, value));
-    writing = job.catch(() => {});
-    return job;
+    return enqueue(async () => {
+      const recovered = await recover();
+      return commit(method, value, recovered);
+    });
   }
   async function migratePageRecords() {
-    const old = await storage("records", "getAll");
-    for (const record of old) {
+    const keys = await storage("records", "getAllKeys");
+    for (const key of keys) {
       if (stopped) return;
-      if (record.slot !== room.me) continue;
-      const key = [record.slot, record.page],
-        id = "legacy:" + key.join(":");
+      if (key[0] !== room.me) continue;
+      const id = "legacy:" + key.join(":");
       let progress = await storage("recordImports", "get", id);
       if (progress?.done || (progress && !Object.hasOwn(progress, "done")))
         continue;
       await pull(true);
+      const record = await storage("records", "get", key);
+      if (!record) continue;
       if (!progress) {
         // Another browser already authored this page; never resurrect its old cache.
         if (
@@ -265,7 +337,7 @@ export function createSharedRecords(room) {
             await ensure("reply", {
               key,
               postId: progress.postId,
-              reply: { ...reply, id: progress.replyIds[index] },
+              reply: { ...reply, id: reply.id ?? progress.replyIds[index] },
             });
       }
       await storage("recordImports", "put", { ...progress, done: true });
@@ -275,6 +347,7 @@ export function createSharedRecords(room) {
     if (migrating || !allowed || stopped) return;
     migrating = true;
     try {
+      await enqueue(recover);
       if (navigator.locks)
         await navigator.locks.request(
           "bookmate-import:" + room.id + ":" + room.me,
@@ -313,20 +386,25 @@ export function createSharedRecords(room) {
       return () => listeners.delete(fn);
     },
     async accept(id, body) {
-      await pull(!meta.has(id));
+      await pull(true);
       const m = meta.get(id);
-      if (!m) throw Error("등록되지 않은 기록");
-      const data = await verify(m, body);
-      await storage("recordBodies", "put", { id, body });
-      bodies.set(id, body);
-      decoded.set(id, data);
-      rebuild();
+      if (!live.has(id)) throw Error("등록되지 않았거나 삭제된 기록");
+      await verify(m, body);
+      if (!live.has(id) || !(await cacheBody(id, body)) || !live.has(id))
+        throw Error("삭제된 기록");
+      available.add(id);
+      notify();
     },
-    has: (id) => decoded.has(id),
-    get: (id) => (decoded.has(id) ? bodies.get(id) : undefined),
+    isLive: (id) => live.has(id),
+    has: (id) => live.has(id) && available.has(id),
+    get: async (id) => (await readBody(id))?.body,
+    releaseView() {
+      viewGeneration++;
+      decoded.clear();
+    },
     metadata: (id) => meta.get(id),
-    missing: () => [...meta.keys()].filter((id) => !decoded.has(id)),
-    inventory: () => [...decoded.keys()],
+    missing: () => [...live].filter((id) => !available.has(id)),
+    inventory: () => [...available],
     isAllowed: () => allowed,
     report(count, error = "", active = 0) {
       peers = count;

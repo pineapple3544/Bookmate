@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { PrismaClient } from "@prisma/client";
-import { createHmac } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import { ApiFailure } from "./errors.js";
 function fail(status: number, code: string): never {
   throw new ApiFailure(status, code);
@@ -15,6 +15,10 @@ const kinds = [
   "note",
   "delete-note",
 ];
+const tombstoneKinds = new Set(["delete", "delete-reply", "delete-note"]);
+const emptyDigest = createHash("sha256").update("").digest("hex");
+const maxRoomOperations = 2048;
+const maxRoomBytes = 256 * 1024 * 1024;
 const uuid = { type: "string", format: "uuid" };
 export function registerRecordSync(
   app: FastifyInstance,
@@ -120,18 +124,16 @@ export function registerRecordSync(
           where: { id: body.id },
         });
         if (previous) {
+          // An overflow tombstone has no client payload. Only its target,
+          // author, room and operation kind participate in retry matching.
+          const differentBody =
+            previous.bytes !== 0 &&
+            (previous.digest !== body.digest || previous.bytes !== body.bytes);
           if (
             previous.roomId !== roomId ||
             previous.authorId !== uid ||
-            [
-              "kind",
-              "slot",
-              "page",
-              "postId",
-              "replyId",
-              "digest",
-              "bytes",
-            ].some(
+            differentBody ||
+            ["kind", "slot", "page", "postId", "replyId"].some(
               (key) =>
                 ((previous as any)[key] ?? null) !==
                 ((body as any)[key] ?? null),
@@ -150,10 +152,15 @@ export function registerRecordSync(
           orderBy: { sequence: "asc" },
         });
         let post: string | null = null;
+        let hasNote = false;
         for (const op of history) {
           if (op.kind === "publish") post = op.postId;
           if (op.kind === "delete") post = null;
+          if (op.kind === "note") hasNote = true;
+          if (op.kind === "delete-note" || op.kind === "delete")
+            hasNote = false;
         }
+        if (body.kind === "delete-note" && !hasNote) fail(409, "NOTE_MISSING");
         if (body.kind === "publish") {
           if (post) fail(409, "POST_EXISTS");
           if (!body.postId) fail(400, "POST_ID_REQUIRED");
@@ -182,13 +189,22 @@ export function registerRecordSync(
           _count: true,
           _sum: { bytes: true },
         });
-        if (
-          usage._count >= 2048 ||
-          (usage._sum.bytes ?? 0) + body.bytes > 256 * 1024 * 1024
-        )
+        const exceedsQuota =
+          usage._count >= maxRoomOperations ||
+          (usage._sum.bytes ?? 0) + body.bytes > maxRoomBytes;
+        if (exceedsQuota && !tombstoneKinds.has(body.kind))
           fail(409, "ROOM_RECORD_LIMIT");
+        // The room lock and the live-target checks allow at most one extra
+        // tombstone per admitted publish, reply or note. Keep every sequence
+        // for offline clients, but admit no more payload bytes above quota.
         const operation = await tx.recordOperation.create({
-          data: { ...body, roomId, authorId: uid, actorSlot: me },
+          data: {
+            ...body,
+            ...(exceedsQuota ? { bytes: 0, digest: emptyDigest } : {}),
+            roomId,
+            authorId: uid,
+            actorSlot: me,
+          },
         });
         reply.code(201);
         return { operation: json(operation) };
