@@ -1,6 +1,8 @@
+import { interactionTarget, seatOccupied } from "./interaction.js";
 import { createSharedRecords } from "./shared-records.js";
 import { setSharedRecords } from "./record-bridge.js";
 import { connectRecords } from "./p2p-records.js";
+import { peerProfile, renderProfileShelf } from "./profile.js";
 import { serverMode, account } from "./account.js";
 import { createLiveRoom } from "./live-client.js";
 import { createRecords } from "./records.js";
@@ -8,7 +10,8 @@ import { localMode } from "./local-transport.js";
 import { createChat } from "./chat.js";
 import { isRating, setupRating } from "./rating.js";
 import { exchangeCode, exchangeRequest, exchangeUrl, themes } from "./exchange-client.js";
-import { avatarOptions, bottomPatterns, colorableBottoms, drawAvatar, drawAvatarOption, lockedAvatarOptions, normalizeAppearance, skinTone } from "./avatar.js";
+import { drawAvatar, normalizeAppearance } from "./avatar.js";
+import { appearanceWithPet, bookPetId, createWardrobe, drawBookPet, equippedPet, loadPets, petCollectionKeyFor, readPets } from "./wardrobe.js";
 const canvas = document.querySelector("#room");
 const worldContext = canvas.getContext("2d");
 const roomBackdrop = document.createElement("canvas");
@@ -20,7 +23,20 @@ let backdropHour;
 const stage = document.createElement("div");
 stage.className = "world-stage";
 canvas.before(stage);
-stage.append(canvas);
+const cabinet = document.querySelector("#customize-avatar");
+const cabinetBounds = { x: 18, y: 148, width: 68, height: 94 };
+const interactionButton = document.querySelector("#interact");
+const focusMark = document.createElement("span");
+focusMark.className = "interaction-focus";
+focusMark.setAttribute("aria-hidden", "true");
+focusMark.hidden = true;
+stage.append(canvas, cabinet, focusMark);
+Object.assign(cabinet.style, {
+  left: cabinetBounds.x / canvas.width * 100 + "%",
+  top: cabinetBounds.y / canvas.height * 100 + "%",
+  width: cabinetBounds.width / canvas.width * 100 + "%",
+  height: cabinetBounds.height / canvas.height * 100 + "%",
+});
 const mobileLayout = matchMedia("(max-width: 520px)");
 const panelDefinitions = [
   [".book-section", "책 정보"],
@@ -73,30 +89,14 @@ const currentBook = {
   art: bookDetail.dataset.coverArt,
 };
 if (exchange) {
-  Object.assign(currentBook, { id: "exchange:" + exchange.title.normalize("NFC") + "\u0000" + exchange.author.normalize("NFC"), title: exchange.title, color: themes[exchange.theme] });
+  Object.assign(currentBook, { id: bookPetId(exchange.title, exchange.author), title: exchange.title, color: themes[exchange.theme] });
   $(".room-heading h1").textContent = exchange.title;
   bookDetail.querySelector("h2").textContent = exchange.title;
   bookDetail.querySelector(".cover span").textContent = exchange.title;
   bookDetail.querySelector(".cover").style.background = currentBook.color;
 }
-const petCollectionKey = "bookmate-book-pets-v1" + (serverMode && account ? ":"+account.id : "");
-function readPets(value) {
-  try {
-    const books = JSON.parse(value);
-    return Array.isArray(books) ? books.filter(book =>
-      typeof book?.id === "string" && typeof book.title === "string" &&
-      /^#[0-9a-f]{6}$/i.test(book.color) && /^#[0-9a-f]{6}$/i.test(book.art),
-    ) : [];
-  } catch {
-    return [];
-  }
-}
-let pets = [];
-try {
-  pets = readPets(localStorage.getItem(petCollectionKey));
-} catch {
-  // The current session can still use an earned pet if storage is blocked.
-}
+const petCollectionKey = petCollectionKeyFor(serverMode && account?.id);
+let pets = loadPets(petCollectionKey);
 const capacity = exchange?.members.length ?? 4;
 const petTrails = Array.from({ length: capacity }, () => []);
 const appearanceKeys = Array.from({ length: capacity }, (_, slot) =>
@@ -104,8 +104,7 @@ const appearanceKeys = Array.from({ length: capacity }, (_, slot) =>
 );
 function readAppearance(value) {
   try {
-    const saved = JSON.parse(value);
-    return { ...normalizeAppearance(saved), pet: typeof saved?.pet === "string" ? saved.pet : "" };
+    return appearanceWithPet(JSON.parse(value));
   } catch {
     return normalizeAppearance();
   }
@@ -119,6 +118,7 @@ const appearances = appearanceKeys.map((key, slot) => {
     return normalizeAppearance();
   }
 });
+const equippedPets = appearances.map(appearance => equippedPet(appearance, pets));
 const demoSeats = [
   { x: 240, y: 192 },
   { x: 384, y: 192 },
@@ -189,6 +189,52 @@ try {
   /* A fresh local prototype works when storage is unavailable. */
 }
 if (exchange) state.selected = exchange.me;
+// Render remote samples slightly behind arrival time to absorb normal packet jitter.
+const movementInterval = 100;
+const playbackDelay = 140;
+const remotePaths = new Map();
+let displayUsers = state.users;
+
+function queuePosition(slot, previous, next, snap = false) {
+  const distance = Math.hypot(next.x - previous.x, next.y - previous.y);
+  if (snap || distance > 48) {
+    remotePaths.delete(slot);
+    return;
+  }
+  if (!distance && previous.seat === next.seat) return;
+  const now = performance.now();
+  let samples = remotePaths.get(slot);
+  if (!samples || now - samples.at(-1).time > 3 * movementInterval) {
+    samples = [{ x: previous.x, y: previous.y, seat: previous.seat, time: now - movementInterval }];
+    remotePaths.set(slot, samples);
+  }
+  // Keep one sample before playback time, even when a background tab skips frames.
+  while (samples.length > 1 && samples[1].time <= now - playbackDelay) samples.shift();
+  samples.push({ x: next.x, y: next.y, seat: next.seat, time: now });
+}
+
+function displayPosition(user, slot, frameTime) {
+  const samples = remotePaths.get(slot);
+  if (!samples) return user;
+  const at = frameTime - playbackDelay;
+  while (samples.length > 1 && samples[1].time <= at) samples.shift();
+  if (samples.length === 1) {
+    remotePaths.delete(slot);
+    return user;
+  }
+  const [from, to] = samples;
+  const fraction = Math.max(0, (at - from.time) / Math.max(1, to.time - from.time));
+  return { ...user, x: from.x + (to.x - from.x) * fraction,
+    y: from.y + (to.y - from.y) * fraction, seat: to.seat === null ? null : from.seat };
+}
+
+function receiveLocalUser(slot, user) {
+  const previous = state.users[slot];
+  queuePosition(slot, previous, user);
+  state.users[slot] = user;
+  if (previous.seat !== user.seat || previous.done !== user.done ||
+      previous.note !== user.note || previous.page !== user.page) update();
+}
 const slotPrefix = "bookmate-local-user-v1" + roomSuffix + ":";
 const channel =
   localMode && typeof BroadcastChannel !== "undefined"
@@ -234,8 +280,7 @@ if (localMode) {
         slot !== state.selected &&
         validUser(user)
       ) {
-        state.users[slot] = user;
-        update();
+        receiveLocalUser(slot, user);
       }
     } catch {
       /* Ignore malformed external state. */
@@ -251,8 +296,7 @@ if (channel)
       data.slot !== state.selected &&
       validUser(data.user)
     ) {
-      state.users[data.slot] = data.user;
-      update();
+      receiveLocalUser(data.slot, data.user);
     }
   };
 let lastBroadcast = 0;
@@ -270,6 +314,8 @@ let path = [];
 let pendingSeat = null;
 let target = null;
 let walking = false;
+const walkSpeed = 105;
+const heldDirections = new Map();
 let lastTime = 0;
 let toastTimer;
 function toast(message) {
@@ -389,6 +435,43 @@ function drawWindow(hour) {
   for (let x = 22; x < 36; x += 5) rect(x, 24, 2, 102, "#c7ad8d");
   rect(22, 127, 130, 5, "#c1a078");
 }
+function drawWardrobe() {
+  ctx.save();
+  ctx.translate(cabinetBounds.x, cabinetBounds.y);
+  // Carved crown, side panel, and raised feet.
+  rect(3, 88, 65, 6, "#403529");
+  rect(2, 7, 64, 78, "#422e25");
+  rect(5, 84, 7, 9, "#503729");
+  rect(55, 84, 7, 9, "#503729");
+  rect(0, 4, 68, 6, "#634231");
+  rect(3, 1, 62, 4, "#b88859");
+  rect(4, 9, 56, 72, "#aa794e");
+  rect(60, 10, 4, 71, "#765038");
+  rect(6, 12, 51, 58, "#583e32");
+  rect(8, 14, 23, 54, "#99714d");
+  rect(10, 16, 19, 50, "#795439");
+  // A brass hanger on one door and a silvered mirror on the other.
+  rect(18, 22, 5, 2, "#eac48a");
+  rect(21, 24, 2, 3, "#eac48a");
+  rect(18, 26, 4, 2, "#eac48a");
+  for (let step = 0; step < 4; step++) {
+    rect(16 - step * 2, 28 + step, 3, 2, "#eac48a");
+    rect(20 + step * 2, 28 + step, 3, 2, "#eac48a");
+  }
+  rect(10, 32, 19, 2, "#eac48a");
+  rect(33, 14, 22, 54, "#c29668");
+  rect(35, 16, 18, 50, "#597476");
+  rect(37, 18, 14, 46, "#96adab");
+  for (let step = 0; step < 6; step++) {
+    rect(38 + step * 2, 37 - step * 2, 3, 4, "#d9e1cc");
+  }
+  rect(27, 44, 3, 5, "#f2cf86");
+  rect(33, 44, 3, 5, "#f2cf86");
+  rect(6, 72, 51, 9, "#825b3f");
+  rect(26, 74, 10, 2, "#edc17e");
+  rect(0, 82, 65, 4, "#654331");
+  ctx.restore();
+}
 function room(hour) {
   rect(0, 0, 640, 400, "#79583b");
   for (let row = 0; row < 17; row++) {
@@ -436,15 +519,7 @@ function room(hour) {
     rect(178, y, 3, 5, "#c3b18c");
     rect(450, y, 3, 5, "#c3b18c");
   }
-  // Small side furniture.
-  rect(19, 185, 65, 49, "#25312e");
-  rect(23, 173, 57, 48, "#60766a");
-  rect(29, 178, 44, 25, "#748675");
-  rect(28, 208, 47, 20, "#7f8e7c");
-  rect(18, 197, 10, 34, "#4b6359");
-  rect(74, 197, 11, 34, "#4b6359");
-  rect(22, 231, 5, 12, "#453c2b");
-  rect(72, 231, 5, 12, "#453c2b");
+  drawWardrobe();
   rect(104, 201, 44, 9, "#a17a51");
   rect(108, 210, 4, 29, "#4b392a");
   rect(139, 210, 4, 29, "#4b392a");
@@ -463,14 +538,12 @@ function chair(index) {
   rect(seat.x + 11, seat.y - 21, 4, 17, "#674d31");
   rect(seat.x - 12, seat.y + 11, 4, 13, "#493a2a");
   rect(seat.x + 8, seat.y + 11, 4, 13, "#493a2a");
-  if (!state.users.some((user) => user.seat === index))
-    outline(seat.x - 17, seat.y - 12, 34, 29, "#82d9b0");
 }
 function avatar(user, index, time) {
   const x = Math.round(user.x),
     y = Math.round(user.y);
   const step =
-    state.motion && walking && index === state.selected
+    state.motion && (index === state.selected ? walking : remotePaths.has(index) && user.seat === null)
       ? Math.round(Math.sin(time / 90) * 2)
       : 0;
   rect(x - 13, y + 1, 26, 5, "#27382d70");
@@ -482,19 +555,6 @@ function avatar(user, index, time) {
     rect(x + 1, y - 12, 11, 9, "#eee4c1");
     rect(x - 1, y - 12, 2, 10, "#6a7c64");
   }
-}
-function drawBookPet(context, book, x, y, scale = 1) {
-  const fill = (left, top, width, height, color) => {
-    context.fillStyle = color;
-    context.fillRect(x + left * scale, y + top * scale, width * scale, height * scale);
-  };
-  fill(0, 0, 14, 17, "#38342e");
-  fill(2, 2, 11, 14, book.color);
-  fill(11, 2, 2, 14, "#ffebd58c");
-  fill(3, 6, 7, 1, book.art);
-  fill(3, 8, 4, 1, book.art);
-  fill(3, 13, 8, 3, book.art);
-  fill(6, 11, 2, 3, book.art);
 }
 function petPosition(user, index) {
   const trail = petTrails[index];
@@ -556,21 +616,72 @@ const petLabels = state.users.map(() => {
   stage.append(label);
   return label;
 });
+const compactLabels = matchMedia("(max-width: 520px), (min-width: 600px) and (max-width: 950px) and (max-height: 500px)");
+let inspectedSlot = -1;
 function label(user, index) {
   const element = avatarLabels[index];
+  element.hidden = compactLabels.matches && index !== state.selected && index !== state.holder && index !== inspectedSlot && !chat.isSpeaking(index);
   element.classList.toggle("offline", !onlineSlots.has(index));
   element.style.left = (user.x / 640) * 100 + "%";
   element.style.top = ((user.y - 37) / 400) * 100 + "%";
   element.classList.toggle("active", index === state.selected);
   if (index === state.holder && readingBadge.parentElement !== element) element.append(readingBadge);
 }
+let focusedTarget = null;
+let focusedSeated = false;
+let focusX, focusY, focusedName;
+const roomPlayerSlots = exchange ? exchange.members.map((_, slot) => slot) : null;
+
+function currentInteraction() {
+  if (pendingSeat !== null) return null;
+  return interactionTarget(displayUsers[state.selected], displayUsers, seats, cabinetBounds, roomPlayerSlots ?? onlineSlots);
+}
+
+function syncInteractionFocus() {
+  const next = currentInteraction();
+  const seated = state.users[state.selected].seat !== null;
+  const isPlayer = typeof next === "string" && next.startsWith("player-");
+  const slot = isPlayer ? Number(next.slice(7)) : null;
+  const peer = isPlayer ? displayUsers[slot] : null;
+  const peerName = isPlayer ? memberName(slot) : null;
+  if (next === focusedTarget && seated === focusedSeated && peer?.x === focusX && peer?.y === focusY && peerName === focusedName) return;
+  focusedName = peerName;
+  focusX = peer?.x;
+  focusY = peer?.y;
+  focusedTarget = next;
+  focusedSeated = seated;
+  interactionButton.disabled = next === null;
+  focusMark.hidden = next === null;
+  let actionName = "상호작용";
+  if (next !== null) {
+    const isWardrobe = next === "wardrobe";
+    const bounds = peer ? { x: peer.x - 16, y: peer.y - 33, width: 32, height: 38 } : isWardrobe ? cabinetBounds : {
+      x: seats[next].x - 19, y: seats[next].y - 32, width: 38, height: 58,
+    };
+    Object.assign(focusMark.style, {
+      left: bounds.x / canvas.width * 100 + "%",
+      top: bounds.y / canvas.height * 100 + "%",
+      width: bounds.width / canvas.width * 100 + "%",
+      height: bounds.height / canvas.height * 100 + "%",
+    });
+    focusMark.dataset.target = typeof next === "string" ? next : "chair-" + next;
+    actionName += " · " + (isPlayer ? peerName + " 프로필 보기" : isWardrobe ? "캐릭터 꾸미기" : seated ? "일어나기" : "의자에 앉기");
+  } else {
+    delete focusMark.dataset.target;
+  }
+  interactionButton.setAttribute("aria-label", actionName);
+  interactionButton.title = actionName + " (E)";
+}
+
 function draw(time) {
   let offset = 0;
   if (mobileLayout.matches) {
     const viewportWidth = canvas.parentElement.parentElement.clientWidth;
     const stageWidth = stage.clientWidth;
-    const desiredOffset =
-      (state.users[state.selected].x / 640) * stageWidth - viewportWidth / 2;
+    const focalX = document.activeElement === cabinet
+      ? cabinetBounds.x + cabinetBounds.width / 2
+      : state.users[state.selected].x;
+    const desiredOffset = focalX / canvas.width * stageWidth - viewportWidth / 2;
     offset = -Math.max(
       0,
       Math.min(stageWidth - viewportWidth, desiredOffset),
@@ -590,7 +701,11 @@ function draw(time) {
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(roomBackdrop, 0, 0);
   seats.forEach((_, i) => chair(i));
-  const objects = state.users.map((user, index) => ({
+  displayUsers = remotePaths.size
+    ? state.users.map((user, slot) => displayPosition(user, slot, time))
+    : state.users;
+  syncInteractionFocus();
+  const objects = displayUsers.map((user, index) => ({
     y: user.y,
     draw: () => {
       ctx.save();
@@ -599,8 +714,8 @@ function draw(time) {
       ctx.restore();
     },
   }));
-  state.users.forEach((user, index) => {
-    const pet = pets.find(book => book.id === appearances[index].pet);
+  displayUsers.forEach((user, index) => {
+    const pet = equippedPets[index];
     const label = petLabels[index];
     label.hidden = !pet;
     if (!pet) {
@@ -621,7 +736,7 @@ function draw(time) {
   });
   objects.push({ y: 276, draw: table });
   objects.sort((a, b) => a.y - b.y).forEach((object) => object.draw());
-  state.users.forEach(label);
+  displayUsers.forEach(label);
   readingBadge.hidden = state.holder < 0;
   chat.positionBubbles();
   if (target && walking)
@@ -683,6 +798,7 @@ function moveTo(x, y, seat = null) {
     toast("이동 불가");
     return;
   }
+  heldDirections.clear();
   user.seat = null;
   path = nextPath;
   pendingSeat = seat;
@@ -693,7 +809,10 @@ function moveTo(x, y, seat = null) {
 }
 function finishMovement() {
   walking = false;
-  if (pendingSeat !== null) state.users[state.selected].seat = pendingSeat;
+  if (pendingSeat !== null) {
+    if (seatOccupied(pendingSeat, state.users[state.selected], state.users)) toast("사용 중");
+    else state.users[state.selected].seat = pendingSeat;
+  }
   pendingSeat = null;
   target = null;
   save();
@@ -712,21 +831,25 @@ function canOpenRecords() {
 function update() {
   if (exchange) {
     exchange.members.forEach((person, index) => {
+      const nameNode = avatarLabels[index].firstChild;
+      if (nameNode.nodeValue !== person.name) nameNode.nodeValue = person.name;
       state.users[index].done = Boolean(person.finishedAt);
-      if (person.appearance) appearances[index] = { ...normalizeAppearance(person.appearance), pet: person.appearance.pet ?? appearances[index].pet };
+      if (person.appearance) {
+        appearances[index] = appearanceWithPet({ ...person.appearance, pet: person.appearance.pet ?? appearances[index].pet });
+      }
     });
     state.holder = exchange.members.findIndex(person => person.receivedAt && !person.finishedAt);
   } else {
     state.holder = state.users.findIndex(person => !person.done);
   }
   unlockBookPet();
+  appearances.forEach((appearance, index) => { equippedPets[index] = equippedPet(appearance, pets); });
   const user = state.users[state.selected];
   $("#chat-sender").textContent = memberName(state.selected);
   $(".room-count").textContent = onlineSlots.size + "명 온라인";
   $("#selected-label").textContent = memberName(state.selected);
   $("#action-state").textContent =
     user.seat !== null ? "착석" : walking ? "이동 중" : "이동 가능";
-  $("#sit").textContent = user.seat !== null ? "일어나기" : "앉기";
   $("#holder").textContent = state.holder >= 0 ? memberName(state.holder) : "모두 완독";
   const isReading = state.selected === state.holder;
   const complete = $("#complete");
@@ -743,6 +866,7 @@ function update() {
   state.users.forEach((member, index) => {
     const button = document.createElement("button");
     button.className = "member" + (index === state.selected ? " selected" : "");
+    button.classList.toggle("offline", !onlineSlots.has(index));
     button.setAttribute("aria-pressed", String(index === state.selected));
     const mini = document.createElement("canvas");
     mini.width = 36;
@@ -766,6 +890,7 @@ function update() {
     button.append(mini, name, status);
     if (exchange && index !== state.selected) button.disabled = true;
     button.addEventListener("click", () => {
+      stopHeldMovement();
       path = [];
       walking = false;
       pendingSeat = null;
@@ -778,6 +903,7 @@ function update() {
           /* Keep current state. */
         }
       }
+      remotePaths.delete(index);
       state.selected = index;
       void chat.heartbeat();
       save();
@@ -791,55 +917,195 @@ canvas.addEventListener("pointerdown", (event) => {
   const bounds = canvas.getBoundingClientRect();
   const x = ((event.clientX - bounds.left) * 640) / bounds.width;
   const y = ((event.clientY - bounds.top) * 400) / bounds.height;
+  if (compactLabels.matches) {
+    inspectedSlot = -1;
+    // The nearest avatar in front is the one painted last.
+    displayUsers.forEach((user, index) => {
+      if (Math.abs(user.x - x) > 16 || y < user.y - 34 || y > user.y + 4) return;
+      if (inspectedSlot < 0 || user.y >= displayUsers[inspectedSlot].y) inspectedSlot = index;
+    });
+    if (inspectedSlot >= 0 && inspectedSlot !== state.selected) return;
+  }
   const seat = seats.findIndex(
     (s) => Math.abs(s.x - x) < 22 && y >= s.y - 32 && y <= s.y + 20,
   );
-  if (seat >= 0) sit(seat);
-  else moveTo(x, y);
-});
-function step(direction) {
-  const [dx, dy] = {
-    left: [-16, 0],
-    right: [16, 0],
-    up: [0, -16],
-    down: [0, 16],
-  }[direction];
-  const user = state.users[state.selected];
-  moveTo(user.x + dx, user.y + dy);
-}
-canvas.addEventListener("keydown", (event) => {
-  const direction = {
-    ArrowLeft: "left",
-    ArrowRight: "right",
-    ArrowUp: "up",
-    ArrowDown: "down",
-  }[event.key];
-  if (direction) {
-    event.preventDefault();
-    step(direction);
+  if (seat < 0) {
+    moveTo(x, y);
+  } else if (state.users[state.selected].seat !== seat) {
+    const chair = seats[seat];
+    moveTo(chair.x, chair.y + (chair.y < 240 ? -24 : 24));
   }
 });
-document
-  .querySelectorAll("[data-direction]")
-  .forEach((button) =>
-    button.addEventListener("click", () => step(button.dataset.direction)),
-  );
-$("#sit").addEventListener("click", () => {
+const arrowDirections = { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down" };
+const directionVectors = { left: [-1, 0], right: [1, 0], up: [0, -1], down: [0, 1] };
+
+function advanceHeldMovement(distance) {
+  const directions = new Set(heldDirections.values());
+  let dx = 0, dy = 0;
+  for (const direction of directions) {
+    const [x, y] = directionVectors[direction];
+    dx += x;
+    dy += y;
+  }
   const user = state.users[state.selected];
+  const scale = distance / (Math.hypot(dx, dy) || 1);
+  const x = user.x, y = user.y;
+  if (dx && isWalkable(x + dx * scale, y)) user.x += dx * scale;
+  if (dy && isWalkable(user.x, y + dy * scale)) user.y += dy * scale;
+  const moved = user.x !== x || user.y !== y;
+  if (moved) user.seat = null;
+  if (walking !== moved) {
+    walking = moved;
+    update();
+  }
+}
+
+function holdDirection(source, direction) {
+  if (heldDirections.has(source)) return;
+  const starting = heldDirections.size === 0;
+  heldDirections.set(source, direction);
+  if (starting) {
+    path = [];
+    pendingSeat = null;
+    target = null;
+    lastTime = performance.now();
+    // Give even a tap completed between two animation frames a visible step.
+    advanceHeldMovement(1);
+  }
+}
+
+function releaseDirection(source) {
+  if (heldDirections.delete(source) && !heldDirections.size) finishMovement();
+}
+
+function stopHeldMovement() {
+  if (!heldDirections.size) return;
+  heldDirections.clear();
+  finishMovement();
+}
+
+function editingMovementTarget(target) {
+  return target.isContentEditable || target.closest?.("input, textarea, select, dialog");
+}
+
+document.addEventListener("keydown", event => {
+  if (event.defaultPrevented || event.isComposing || event.ctrlKey || event.altKey || event.metaKey ||
+      editingMovementTarget(event.target) || document.querySelector("dialog[open]")) return;
+  const activation = event.key === " " || event.key === "Enter";
+  const direction = activation ? event.target.closest?.("[data-direction]")?.dataset.direction : arrowDirections[event.key];
+  if (!direction) return;
+  event.preventDefault();
+  if (!event.repeat) holdDirection("key:" + event.key, direction);
+});
+document.addEventListener("keyup", event => {
+  const source = "key:" + event.key;
+  if (heldDirections.has(source)) {
+    event.preventDefault();
+    releaseDirection(source);
+  }
+});
+for (const button of document.querySelectorAll("[data-direction]")) {
+  button.addEventListener("pointerdown", event => {
+    if (event.button !== 0) return;
+    button.setPointerCapture(event.pointerId);
+    holdDirection(event.pointerId, button.dataset.direction);
+  });
+  for (const type of ["pointerup", "pointercancel", "lostpointercapture"]) {
+    button.addEventListener(type, event => releaseDirection(event.pointerId));
+  }
+  // Assistive technologies can activate a button without any pointer or key events.
+  button.addEventListener("click", event => {
+    if (event.detail !== 0) return;
+    holdDirection("activation", button.dataset.direction);
+    releaseDirection("activation");
+  });
+}
+window.addEventListener("blur", stopHeldMovement);
+window.addEventListener("pagehide", stopHeldMovement);
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) stopHeldMovement();
+});
+document.addEventListener("focusin", event => {
+  if (editingMovementTarget(event.target)) stopHeldMovement();
+});
+const movementToggle = $("#movement-toggle");
+movementToggle.addEventListener("click", () => {
+  const expanded = movementToggle.getAttribute("aria-expanded") === "true";
+  if (expanded) stopHeldMovement();
+  movementToggle.setAttribute("aria-expanded", String(!expanded));
+});
+const peerDialog = $("#peer-profile");
+let profileRequest = 0;
+peerDialog.addEventListener("close", () => { profileRequest++; });
+async function openPeerProfile(slot) {
+  const request = ++profileRequest;
+  const status = $("#peer-status");
+  $("#peer-title").textContent = memberName(slot) + " · 프로필";
+  $("#peer-content").hidden = true;
+  $("#peer-bio").textContent = "";
+  $("#peer-name").textContent = "";
+  $("#peer-current-book").textContent = "";
+  const portrait = $("#peer-avatar");
+  const portraitContext = portrait.getContext("2d");
+  portraitContext.clearRect(0, 0, portrait.width, portrait.height);
+  $("#peer-books").replaceChildren();
+  $("#peer-book-detail").textContent = "";
+  status.textContent = "불러오는 중…";
+  peerDialog.showModal();
+  try {
+    const profile = await peerProfile(exchange, slot);
+    if (request !== profileRequest || !peerDialog.open) return;
+    if (!profile.profilePublic) {
+      status.textContent = "비공개 프로필입니다.";
+      return;
+    }
+    $("#peer-title").textContent = "프로필";
+    $("#peer-name").textContent = profile.nickname;
+    $("#peer-current-book").textContent = profile.currentBookTitle || "없음";
+    $("#peer-bio").textContent = profile.bio;
+    portrait.classList.toggle("offline", !onlineSlots.has(slot));
+    drawAvatar(portraitContext, portrait.width / 2 - 14, 15, slot, appearances[slot]);
+    renderProfileShelf($("#peer-books"), $("#peer-book-detail"), profile.books);
+    $("#peer-content").hidden = false;
+    status.textContent = "";
+  } catch (error) {
+    if (request === profileRequest && peerDialog.open) status.textContent = error.message;
+  }
+}
+function interact(trigger) {
+  const user = state.users[state.selected];
+  // A late position or occupancy update must never redirect an already displayed action.
+  if (focusedTarget === null || currentInteraction() !== focusedTarget ||
+      focusedSeated !== (user.seat !== null)) return;
   if (user.seat !== null) {
-    const offset = seats[user.seat].y < 240 ? -24 : 24;
-    moveTo(user.x, user.y + offset);
+    const seat = seats[user.seat];
+    moveTo(seat.x, seat.y + (seat.y < 240 ? -24 : 24));
+  } else if (typeof focusedTarget === "string") {
+    const selectedTarget = focusedTarget;
+    stopHeldMovement();
+    if (walking) {
+      path = [];
+      finishMovement();
+    }
+    if (selectedTarget.startsWith("player-")) {
+      void openPeerProfile(Number(selectedTarget.slice(7)));
+      return;
+    }
+    const slot = state.selected;
+    wardrobe.open({ appearance: appearances[slot], slot, owner: memberName(slot), trigger });
   } else {
-    const available = seats
-      .map((seat, index) => ({ ...seat, index }))
-      .filter((seat) => !state.users.some((u) => u.seat === seat.index))
-      .sort(
-        (a, b) =>
-          Math.hypot(a.x - user.x, a.y - user.y) -
-          Math.hypot(b.x - user.x, b.y - user.y),
-      );
-    if (available.length) sit(available[0].index);
-    else toast("빈자리 없음");
+    sit(focusedTarget);
+  }
+}
+interactionButton.addEventListener("click", () => interact(interactionButton));
+document.addEventListener("keydown", event => {
+  if (event.code !== "KeyE" && event.key.toLowerCase() !== "e") return;
+  if (event.defaultPrevented || event.repeat || event.isComposing || event.ctrlKey ||
+      event.metaKey || event.altKey || event.shiftKey || document.querySelector("dialog[open]") ||
+      event.target.isContentEditable || event.target.closest?.("input, textarea, select")) return;
+  if (focusedTarget !== null) {
+    event.preventDefault();
+    interact(event.target === canvas ? canvas : interactionButton);
   }
 });
 const sharedRecords = exchange && serverMode ? createSharedRecords(exchange) : null;
@@ -912,283 +1178,31 @@ function unlockBookPet() {
   }
   return true;
 }
-const avatarDialog = $("#avatar-dialog");
-const avatarForm = $("#avatar-form");
-const avatarPreview = $("#avatar-preview").getContext("2d");
-const avatarStatus = $("#avatar-status");
-const categoryBar = $(".avatar-categories");
-const optionGroups = $(".avatar-options");
-const optionPreviews = [];
-const avatarMenus = {
-  hair: { title: "헤어", options: ["hairstyle", "hair"] },
-  skin: { title: "피부", options: ["skin"] },
-  top: { title: "상의", options: ["top", "clothes"] },
-  bottom: { title: "하의", options: ["bottom", "bottomColor"] },
-  shoes: { title: "신발", options: ["shoes"] },
-  accessory: { title: "액세서리", options: ["accessory"] },
-  expression: { title: "표정", options: ["expression"] },
-  pet: { title: "펫", options: ["pet"] },
-};
-const optionFields = new Map();
-let activeCategory = "hair";
-let showTopColors = false;
-let editingSlot = 0;
-
-function draftAppearance() {
-  return normalizeAppearance(Object.fromEntries(new FormData(avatarForm)));
-}
-const costumeParts = ["bottom", "bottomColor", "shoes", "accessory"];
-const isCostume = top => lockedAvatarOptions(top).includes("bottom");
-let previousTop = "tee";
-let costumeNoticeAnimation;
-const costumeNotice = $("#costume-notice");
-
-function leaveCostume(category) {
-  if (!costumeParts.includes(category) || !isCostume(avatarForm.elements.top.value)) return;
-  avatarForm.elements.top.value = previousTop;
-  costumeNoticeAnimation?.cancel();
-  costumeNotice.textContent = "";
-  previewAppearance();
-}
-function previewAppearance() {
-  const draft = draftAppearance();
-  const locked = lockedAvatarOptions(draft.top);
-  const wearingOveralls = draft.bottom === "overalls" && !isCostume(draft.top);
-  for (const input of optionFields.get("top").querySelectorAll('input[name="top"]')) {
-    input.disabled = wearingOveralls && input.value !== "tee";
-  }
-  optionFields.get("clothes").hidden = wearingOveralls || !showTopColors || locked.includes("clothes");
-  optionFields.get("bottomColor").hidden = !colorableBottoms.has(draft.bottom) || locked.includes("bottomColor");
-  avatarPreview.clearRect(0, 0, avatarPreview.canvas.width, avatarPreview.canvas.height);
-  drawAvatar(avatarPreview, 30, 39, editingSlot, draft, { scale: 3.6 });
-  const pet = pets.find(book => book.id === new FormData(avatarForm).get("pet"));
-  if (pet) drawBookPet(avatarPreview, pet, 142, 92, 2);
-  $("#avatar-pet-title").textContent = pet?.title ?? "";
-  skinShade.style.background = `linear-gradient(90deg, ${skinTone(draft.skin, 0)}, ${skinTone(draft.skin, 50)}, ${skinTone(draft.skin, 100)})`;
-  for (const { context, category, value } of optionPreviews) {
-    if (avatarMenus[activeCategory].options.includes(category)) {
-      drawAvatarOption(context, category, value, editingSlot, draft);
-    }
-  }
-}
-function setAppearanceFields(appearance) {
-  for (const input of avatarForm.querySelectorAll('input[type="radio"]')) {
-    input.checked = input.value === (appearance[input.name] ?? "");
-  }
-  skinShade.value = appearance.skinShade;
-  avatarStatus.hidden = true;
-  previewAppearance();
-}
-function showCategory(category) {
-  activeCategory = category;
-  optionGroups.scrollTop = 0;
-  for (const button of categoryBar.children) {
-    button.setAttribute("aria-pressed", String(button.dataset.category === category));
-  }
-  for (const group of optionGroups.children) group.hidden = group.dataset.category !== category;
-  previewAppearance();
-}
-function addCategory(category, title) {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "avatar-category";
-  button.dataset.category = category;
-  button.textContent = title;
-  button.addEventListener("click", () => showCategory(category));
-  categoryBar.append(button);
-  const group = document.createElement("div");
-  group.dataset.category = category;
-  optionGroups.append(group);
-  return group;
-}
-function makeTile(tiles, category, value, caption) {
-  const tile = document.createElement("label");
-  tile.className = "avatar-tile";
-  const input = document.createElement("input");
-  input.type = "radio";
-  input.name = category;
-  input.value = value;
-  const face = document.createElement("span");
-  face.className = "avatar-tile-face";
-  tile.append(input, face);
-  tiles.append(tile);
-  if (caption) {
-    const text = document.createElement("span");
-    text.textContent = caption;
-    face.append(text);
-  }
-  return { input, face };
-}
-function addOptionField(category) {
-  const { title, items, sections } = avatarOptions[category];
-  const group = document.createElement("fieldset");
-  group.dataset.option = category;
-  const legend = document.createElement("legend");
-  legend.textContent = title;
-  if (["top", "bottom", "accessory", "expression"].includes(category)) legend.className = "sr-only";
-  group.append(legend);
-  optionFields.set(category, group);
-  for (const [heading, keys] of sections ?? [["", Object.keys(items)]]) {
-    if (heading) {
-      const label = document.createElement("h3");
-      label.className = "avatar-section-heading";
-      label.textContent = heading;
-      group.append(label);
-    }
-    const tiles = document.createElement("div");
-    tiles.className = "avatar-tiles";
-    for (const [index, value] of keys.entries()) {
-      const label = items[value];
-      const swatchCategory = category === "skin" || category === "shoes" || (category === "bottomColor" && value !== "default");
-      const { input, face } = makeTile(tiles, category, value, swatchCategory ? "" : label);
-      if (swatchCategory) {
-        const swatch = document.createElement("span");
-        swatch.className = "skin-swatch";
-        swatch.style.background = bottomPatterns[value] ?? label;
-        swatch.setAttribute("aria-hidden", "true");
-        const toneNames = { peach: "밝은 피부색", sand: "중간 피부색", bronze: "구릿빛", umber: "짙은 갈색", lime: "연두", red: "빨강", gray: "회색", blue: "파랑", violet: "보라" };
-        input.setAttribute("aria-label", category === "skin" ? toneNames[value] : category === "bottomColor" ? (Object.hasOwn(bottomPatterns, value) ? label : avatarOptions.clothes.items[value] ?? "검정") : title + " " + (index + 1));
-        face.append(swatch);
-      } else if (value !== "none" && category !== "bottomColor") {
-        const icon = document.createElement("canvas");
-        icon.width = icon.height = 40;
-        icon.setAttribute("aria-hidden", "true");
-        optionPreviews.push({ context: icon.getContext("2d"), category, value });
-        face.prepend(icon);
-      }
-    }
-    group.append(tiles);
-  }
-  return group;
-}
-for (const [category, { title, options }] of Object.entries(avatarMenus)) {
-  const panel = addCategory(category, title);
-  for (const option of options) {
-    if (option !== "pet") panel.append(addOptionField(option));
-  }
-}
-optionFields.get("top").querySelector(".avatar-tiles").after(optionFields.get("clothes"));
-const skinControl = document.createElement("label");
-skinControl.className = "skin-control";
-skinControl.textContent = "피부색 밝기";
-const skinShade = document.createElement("input");
-skinShade.type = "range";
-skinShade.name = "skinShade";
-skinShade.min = "0";
-skinShade.max = "100";
-skinShade.value = "50";
-skinControl.append(skinShade);
-optionFields.get("skin").append(skinControl);
-
-const petGroup = optionGroups.querySelector('[data-category="pet"]');
-const petTiles = document.createElement("div");
-petTiles.className = "avatar-tiles";
-const petHint = document.createElement("p");
-petHint.className = "pet-empty";
-petHint.textContent = "교환독서를 완료하면 나만의 책 펫이 생겨요.";
-petGroup.append(petTiles, petHint);
-function renderPetOptions(selectedPet = "") {
-  petTiles.replaceChildren();
-  petHint.hidden = pets.length > 0;
-  makeTile(petTiles, "pet", "", "없음").input.checked = !pets.some(book => book.id === selectedPet);
-  for (const book of pets) {
-    const { input, face } = makeTile(petTiles, "pet", book.id, book.title);
-    input.checked = book.id === selectedPet;
-    const cover = document.createElement("canvas");
-    cover.width = cover.height = 40;
-    cover.setAttribute("aria-hidden", "true");
-    drawBookPet(cover.getContext("2d"), book, 6, 3, 2);
-    face.prepend(cover);
-  }
-}
-$("#customize-avatar").addEventListener("click", () => {
-  editingSlot = state.selected;
-  previousTop = isCostume(appearances[editingSlot].top) ? "tee" : appearances[editingSlot].top;
-  showTopColors = false;
-  $("#avatar-owner").textContent = memberName(editingSlot);
-  renderPetOptions(appearances[editingSlot].pet);
-  setAppearanceFields(appearances[editingSlot]);
-  showCategory("hair");
-  avatarDialog.showModal();
-});
-avatarForm.addEventListener("change", event => {
-  const { name, value } = event.target;
-  if (name === "top") {
-    showTopColors = true;
-    if (isCostume(value)) {
-      costumeNoticeAnimation?.cancel();
-      costumeNotice.textContent = "코스튬에는 하의, 신발, 액세서리가 포함돼요.";
-      const end = matchMedia("(prefers-reduced-motion: reduce)").matches ? 1 : 0;
-      costumeNoticeAnimation = costumeNotice.animate(
-        [{ opacity: 1 }, { opacity: 1, offset: .72 }, { opacity: end }], 1800,
-      );
-      costumeNoticeAnimation.onfinish = () => { costumeNotice.textContent = ""; };
+const wardrobe = createWardrobe($("#avatar-dialog"), {
+  getPets: () => pets,
+  async save(appearance, slot) {
+    if (exchange) {
+      exchange = await exchangeRequest(exchangeCode, "appearance", appearance);
     } else {
-      previousTop = value;
-      costumeNoticeAnimation?.cancel();
-      costumeNotice.textContent = "";
+      localStorage.setItem(appearanceKeys[slot], JSON.stringify(appearance));
     }
-  } else {
-    applyPartSelection(event.target);
-  }
-  previewAppearance();
+    appearances[slot] = appearance;
+    update();
+  },
+  onSaved: () => toast("캐릭터 외형을 저장했어요."),
 });
-function applyPartSelection({ name, value }) {
-  leaveCostume(name);
-  if (name === "bottom" && value === "overalls") {
-    avatarForm.elements.top.value = "tee";
-    avatarForm.elements.clothes.value = "default";
-    previousTop = "tee";
-    previewAppearance();
-  }
-}
-avatarForm.addEventListener("click", event => applyPartSelection(event.target));
-avatarDialog.addEventListener("close", () => {
-  costumeNoticeAnimation?.cancel();
-  costumeNotice.textContent = "";
-});
-optionFields.get("top").addEventListener("click", event => {
-  if (event.target.name === "top" && !showTopColors) {
-    showTopColors = true;
-    previewAppearance();
-  }
-});
-skinShade.addEventListener("input", previewAppearance);
-$("#avatar-defaults").addEventListener("click", () => {
-  previousTop = "tee";
-  costumeNoticeAnimation?.cancel();
-  costumeNotice.textContent = "";
-  setAppearanceFields({ ...normalizeAppearance(), pet: new FormData(avatarForm).get("pet") ?? "" });
-});
-avatarForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const pet = new FormData(avatarForm).get("pet");
-  const appearance = { ...draftAppearance(), pet: pets.some(book => book.id === pet) ? pet : "" };
-  const submit = avatarForm.querySelector('[type="submit"]');
-  submit.disabled = true;
-  try {
-    if (exchange) exchange = await exchangeRequest(exchangeCode, "appearance", appearance);
-    localStorage.setItem(appearanceKeys[editingSlot], JSON.stringify(appearance));
-  } catch {
-    avatarStatus.textContent = "캐릭터를 저장하지 못했어요. 브라우저 저장소 설정을 확인해 주세요.";
-    avatarStatus.hidden = false;
-    return;
-  } finally {
-    submit.disabled = false;
-  }
-  appearances[editingSlot] = appearance;
-  update();
-  avatarDialog.close();
-  toast("캐릭터 외형을 저장했어요.");
+cabinet.addEventListener("click", () => {
+  canvas.focus({ preventScroll: true });
+  moveTo(cabinetBounds.x + cabinetBounds.width / 2, cabinetBounds.y + cabinetBounds.height + 16);
 });
 window.addEventListener("storage", (event) => {
   if (event.key === petCollectionKey || event.key === null) {
     pets = readPets(event.newValue);
-    if (avatarDialog.open) {
-      renderPetOptions(new FormData(avatarForm).get("pet"));
-      previewAppearance();
+    wardrobe.refreshPets();
+    if (event.key !== null) {
+      update();
+      return;
     }
-    if (event.key !== null) return;
   }
   if (event.key === null) {
     appearances.fill(normalizeAppearance());
@@ -1212,6 +1226,7 @@ $("#motion").addEventListener("change", (event) => {
   save();
 });
 $("#reset").addEventListener("click", () => {
+  remotePaths.clear();
   state = initialState();
   if (localMode) {
     try {
@@ -1235,11 +1250,13 @@ $("#reset").addEventListener("click", () => {
 function tick(time) {
   const delta = Math.min((time - lastTime) / 1000, 0.05);
   lastTime = time;
-  if (path.length) {
+  if (heldDirections.size) {
+    if (delta > 0) advanceHeldMovement(walkSpeed * delta);
+  } else if (path.length) {
     const user = state.users[state.selected],
       next = path[0];
     const distance = Math.hypot(next.x - user.x, next.y - user.y);
-    const travel = 105 * delta;
+    const travel = walkSpeed * delta;
     if (distance <= travel) {
       user.x = next.x;
       user.y = next.y;
@@ -1250,7 +1267,7 @@ function tick(time) {
       user.y += ((next.y - user.y) / distance) * travel;
     }
   }
-  if (walking && time - lastBroadcast >= 100) {
+  if (walking && time - lastBroadcast >= movementInterval) {
     broadcastUser();
     lastBroadcast = time;
   }
@@ -1259,16 +1276,21 @@ function tick(time) {
 }
 const live = exchange && serverMode ? createLiveRoom({
   room: exchange,
-  onPosition(slot, position) {
+  onPosition(slot, position, snap) {
     if (slot === state.selected) return;
     const user = state.users[slot];
     const seat = position.seat ?? null;
     const seatChanged = user.seat !== seat;
+    queuePosition(slot, user, position, snap);
     Object.assign(user, { x: position.x, y: position.y, seat });
     // The animation frame already draws coordinates. Only seating changes the sidebar.
     if (seatChanged) update();
   },
-  onPresence(slots){onlineSlots=new Set(slots);update();},
+  onPresence(slots) {
+    onlineSlots = new Set(slots);
+    for (const slot of remotePaths.keys()) if (!onlineSlots.has(slot)) remotePaths.delete(slot);
+    update();
+  },
   onStatus(value){if(modeLabel)modeLabel.textContent=value;},
 }) : null;
 if(live && sharedRecords)connectRecords({room:exchange,live,store:sharedRecords});
@@ -1276,7 +1298,7 @@ const chat = createChat({
   transport: live?.request,
   memberName,
   getSelected: () => state.selected,
-  getUsers: () => state.users,
+  getUsers: () => displayUsers,
   viewport: document.querySelector(".canvas-wrap"),
   stage,
   onPresence(slots) {

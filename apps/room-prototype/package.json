@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "node server.js",
-    "typecheck": "node --check server.js && node --check public/room.js && node --check public/chat.js && node --check public/local-transport.js && node --check public/records.js && node --check public/account.js && node --check public/exchange-client.js && node --check public/exchange.js && node --check public/live-client.js && node --check public/legacy-notes.js && node --check public/record-protocol.js && node --check public/record-storage.js && node --check public/shared-records.js && node --check public/p2p-records.js",
+    "typecheck": "node --check server.js && node --check public/room.js && node --check public/wardrobe.js && node --check public/profile.js && node --check public/chat.js && node --check public/local-transport.js && node --check public/records.js && node --check public/account.js && node --check public/exchange-client.js && node --check public/exchange.js && node --check public/live-client.js && node --check public/legacy-notes.js && node --check public/record-protocol.js && node --check public/record-storage.js && node --check public/shared-records.js && node --check public/p2p-records.js",
     "test:browser": "node test/local-browser.mjs",
     "test:server-browser": "node test/server-browser.mjs",
     "test:exchange-browser": "node test/exchange-browser.mjs",

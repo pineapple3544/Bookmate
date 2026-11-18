@@ -78,6 +78,33 @@ try {
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   );
+  await page.goto(base + "/?screen=profile");
+  await page.locator("#profile-books").getByText("달빛 서점").waitFor();
+  await page.locator("#profile-form [name=nickname]").fill("단풍");
+  await page.getByLabel("자기소개").fill("그림책을 읽어요.");
+  await page.getByLabel("같은 방 참가자에게 프로필 공개").check();
+  const saved = page.waitForResponse(r => r.url().endsWith("/exchanges/profile") && r.request().method() === "PATCH");
+  await page.getByRole("button", {name:"프로필 저장"}).click();
+  assert.ok((await saved).ok());
+  const code = await page.evaluate(async () => {
+    const {exchangeRequest} = await import("./exchange-client.js");
+    const room = await exchangeRequest("", "", {title:"같이 읽기", capacity:2});
+    return room.code;
+  });
+  const visitor = await browser.newPage();
+  await visitor.goto(base + "/?code=" + code);
+  await visitor.locator("#join-form button").click();
+  await visitor.locator("#join-form").waitFor({state:"hidden"});
+  const profile = await visitor.evaluate(async code => {
+    const {exchangeRequest} = await import("./exchange-client.js");
+    const {peerProfile} = await import("./profile.js");
+    const room = await exchangeRequest(code);
+    if (room.members[0].name !== "단풍") throw new Error("legacy membership nickname mismatch");
+    return peerProfile(room, 0);
+  }, code);
+  assert.equal(profile.bio, "그림책을 읽어요.");
+  assert.equal(profile.currentBookTitle, "햇살 책모임");
+  assert.equal(profile.books[0].title, "달빛 서점");
   assert.deepEqual(errors, []);
   console.log(
     "PASS standalone without API/DB: local JSON exchange, demo start/history/ticket, room/chat, mobile layout",

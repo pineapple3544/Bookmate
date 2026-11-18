@@ -34,7 +34,10 @@ docker compose up --build
 
 | 메서드 | 경로                         | 입력 / 동작                                                         |
 | ------ | ---------------------------- | ------------------------------------------------------------------- |
-| POST   | /auth/register               | email, password, nickname → user (201)                              |
+| POST   | /auth/register               | email, password → user (201)                              |
+| GET    | /me/profile                  | 내 닉네임, 자기소개, 공개 설정, 완독 목록, 현재 읽는 책 제목(currentBookTitle) |
+| PATCH  | /me/profile                  | nickname, bio, profilePublic. 모든 방에서 계정 닉네임 사용 |
+| GET    | /rooms/:roomId/members/:targetId/profile | 같은 방의 참가자 프로필. 비공개면 profilePublic만 반환 |
 | POST   | /auth/login                  | email, password → user + 세션 쿠키                                  |
 | GET    | /auth/me                     | 현재 user                                                           |
 | POST   | /auth/logout                 | 현재 세션 폐기 (204)                                                |
@@ -68,7 +71,7 @@ docker compose up --build
 import { createApiClient } from "@bookmate/api-client";
 import type { RealtimeEvent } from "@bookmate/contracts";
 const api = createApiClient(""); // 5173 프록시 또는 같은 Origin 배포
-await api.register("user@example.com", "a-long-password", "사용자 1");
+await api.register("user@example.com", "a-long-password");
 await api.login("user@example.com", "a-long-password");
 const { room } = await api.createRoom({
   title: "임시 문구1",

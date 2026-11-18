@@ -222,12 +222,17 @@ canvas {
   gap: 8px;
   margin-top: 12px;
 }
+#movement-toggle {
+  display: none;
+}
 .movement {
   display: flex;
   gap: 4px;
   margin-right: auto;
 }
 .movement button {
+  touch-action: none;
+  user-select: none;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -375,7 +380,10 @@ canvas {
   background: transparent;
   text-align: left;
 }
-.member:hover {
+.member:disabled:not(.offline) {
+  opacity: 1;
+}
+.member:not(:disabled):hover {
   background: var(--raised);
 }
 .member.selected {
@@ -511,13 +519,13 @@ dialog::backdrop {
   background: var(--surface);
   box-shadow: 0 8px 0 #49332624;
 }
-#avatar-dialog .avatar-preview {
+.wardrobe-editor .avatar-preview {
   align-content: center;
   min-width: 0;
   margin-bottom: 0;
 }
-#avatar-dialog #avatar-form { min-width: 0; min-height: 0; }
-#avatar-dialog .avatar-options {
+.wardrobe-editor #avatar-form { min-width: 0; min-height: 0; }
+.wardrobe-editor .avatar-options {
   flex: 1 1 auto;
   min-height: 0;
   padding: 4px;
@@ -528,8 +536,8 @@ dialog::backdrop {
   .avatar-shop-panel {
     column-gap: 8px;
   }
-  #avatar-dialog .avatar-preview { padding-inline: 3px; }
-  #avatar-dialog .avatar-category { min-width: 0; padding-inline: 6px; }
+  .wardrobe-editor .avatar-preview { padding-inline: 3px; }
+  .wardrobe-editor .avatar-category { min-width: 0; padding-inline: 6px; }
   .avatar-actions { flex-wrap: wrap; }
 }
 .avatar-categories {
@@ -737,8 +745,8 @@ input[type="checkbox"] {
   position: absolute;
   transform: translate(-50%, -100%);
   padding: 4px 8px;
-  background: #151c1ff2;
-  color: var(--text);
+  background: #252d29;
+  color: #fff9eb;
   border: 1px solid transparent;
   border-radius: 4px;
   pointer-events: none;
@@ -856,8 +864,8 @@ input[type="checkbox"] {
 }
 #chat-send {
   flex-shrink: 0;
-  width: 34px;
-  min-height: 34px;
+  width: 44px;
+  min-height: 44px;
   padding: 0;
   line-height: 1;
 }
@@ -918,6 +926,13 @@ input[type="checkbox"] {
   overflow: hidden;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+@media (min-width: 951px) {
+  .reading-ui .world-panel {
+    width: 100%;
+    max-width: max(540px, calc((100dvh - 306px) * 1.6 + 64px));
+    justify-self: center;
+  }
 }
 @media (min-width: 951px) and (max-height: 760px) {
   .sidebar {
@@ -984,7 +999,7 @@ input[type="checkbox"] {
     border-radius: 12px;
   }
   .world-stage {
-    width: 160%;
+    width: clamp(100%, calc((100dvh - 520px) * 1.6), 160%);
   }
   .room-overlay {
     left: 8px;
@@ -994,7 +1009,37 @@ input[type="checkbox"] {
     font-size: 11px;
   }
   .world-controls {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
     gap: 8px;
+  }
+  #movement-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    justify-self: start;
+  }
+  #movement-toggle::after {
+    content: "";
+    width: 7px;
+    height: 7px;
+    border: solid currentColor;
+    border-width: 0 1.5px 1.5px 0;
+    transform: translateY(-2px) rotate(45deg);
+  }
+  #movement-toggle[aria-expanded="true"]::after {
+    transform: translateY(2px) rotate(225deg);
+  }
+  #movement-toggle[aria-expanded="false"] + .movement {
+    display: none;
+  }
+  .movement {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    margin: 0;
+  }
+  .movement button {
+    flex: 1;
   }
   .button {
     padding: 8px 12px;
@@ -1072,7 +1117,7 @@ input[type="checkbox"] {
     height: 200px;
   }
   #chat-form {
-    /* The room camera pans a canvas that is 160% of the visible width. */
+    /* The room camera pans independently of the composer. */
     left: 50%;
     width: 76%;
   }
@@ -1083,19 +1128,6 @@ input[type="checkbox"] {
   }
   .speech-bubble {
     max-width: 172px;
-  }
-}
-@media (max-width: 380px) {
-  .world-controls {
-    flex-wrap: wrap;
-    justify-content: flex-end;
-  }
-  .movement {
-    width: 100%;
-    margin-bottom: 4px;
-  }
-  .movement button {
-    flex: 1;
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -1511,3 +1543,44 @@ form[hidden] {
 #text-record-dialog canvas { display:block; width:100%; background:#e3e8dd; border-radius:8px; touch-action:none; }
 #text-record-dialog .record-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
 #text-record-dialog .record-actions button { flex:1; }
+
+.wardrobe-hit {
+  position: absolute;
+  z-index: 1;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.wardrobe-hit:focus-visible {
+  outline: 2px dotted white;
+  outline-offset: 2px;
+}
+.interaction-focus {
+  --corner: linear-gradient(#ffed94, #ffed94);
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+  background:
+    var(--corner) top left / 10px 3px, var(--corner) top left / 3px 10px,
+    var(--corner) top right / 10px 3px, var(--corner) top right / 3px 10px,
+    var(--corner) bottom left / 10px 3px, var(--corner) bottom left / 3px 10px,
+    var(--corner) bottom right / 10px 3px, var(--corner) bottom right / 3px 10px;
+  background-repeat: no-repeat;
+  filter: drop-shadow(1px 1px 0 #47372b) drop-shadow(-1px -1px 0 #47372b);
+}
+#interact kbd {
+  margin-inline-start: 6px;
+  padding: 1px 4px;
+  font: inherit;
+  font-size: 11px;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+}
+@media (max-width: 520px), (pointer: coarse) {
+  #interact kbd { display: none; }
+}

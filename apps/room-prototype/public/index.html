@@ -34,9 +34,6 @@
         <span class="version">시제품</span>
       </div>
       <div class="top-actions">
-        <button id="customize-avatar" class="button secondary" type="button">
-          캐릭터 꾸미기
-        </button>
         <span class="local"><i></i> 로컬</span
         ><button id="settings" class="icon-button" aria-label="설정">
           <svg
@@ -75,8 +72,9 @@
             width="640"
             height="400"
             tabindex="0"
-            aria-label="독서방. 방향키로 이동하고 좌석을 누르거나 앉기 버튼을 사용하세요."
+            aria-label="독서방. 방향키로 이동하고 E 키로 강조된 물체와 상호작용하세요."
           ></canvas>
+          <button id="customize-avatar" class="wardrobe-hit" type="button" aria-label="캐릭터 꾸미기 앞으로 이동"></button>
           <div class="room-overlay">
             <span id="selected-label">사용자 1</span
             ><span id="action-state">이동 가능</span>
@@ -99,7 +97,8 @@
           <div id="toast" role="status" aria-live="polite"></div>
         </div>
         <div class="world-controls">
-          <div class="movement" aria-label="이동">
+          <button id="movement-toggle" class="button secondary" type="button" aria-controls="movement" aria-expanded="false">방향키</button>
+          <div id="movement" class="movement" role="group" aria-label="이동">
             <button data-direction="left" aria-label="왼쪽 이동">
               <svg
                 class="ui-icon"
@@ -173,7 +172,7 @@
               </svg>
             </button>
           </div>
-          <button id="sit" class="button secondary">앉기</button>
+          <button id="interact" type="button" class="button secondary" aria-keyshortcuts="E" title="상호작용 (E)" disabled>상호작용<kbd aria-hidden="true">E</kbd></button>
           <button id="record" type="button" class="button secondary" aria-haspopup="dialog" aria-controls="record-feed" hidden>기록하기</button>
         </div>
         <details id="chat-panel" open>
@@ -310,33 +309,23 @@
         <button class="button primary" type="submit">책 전달하기</button>
       </form>
     </dialog>
-    <dialog id="avatar-dialog" aria-label="캐릭터 꾸미기">
-      <div class="avatar-awning" aria-hidden="true">
-        <img src="./avatar-shop-awning.png" alt="" width="2172" height="724" />
-      </div>
-      <div class="avatar-shop-panel">
-        <div class="avatar-preview">
-          <div class="avatar-preview-stage">
-            <canvas id="avatar-preview" width="190" height="148" aria-label="캐릭터와 책 표지 펫 미리보기"></canvas>
-            <span id="avatar-pet-title"></span>
+    <dialog id="peer-profile" aria-labelledby="peer-title">
+      <div class="dialog-heading"><h2 id="peer-title">프로필</h2><button class="button secondary close" type="button">닫기</button></div>
+      <p id="peer-status" role="status"></p>
+      <section id="peer-content" hidden>
+        <div class="peer-intro">
+          <div class="peer-identity">
+            <canvas id="peer-avatar" width="48" height="48" aria-hidden="true"></canvas>
+            <h2 id="peer-name"></h2>
           </div>
-          <span id="avatar-owner"></span>
+          <p id="peer-bio"></p>
         </div>
-        <form id="avatar-form">
-          <p id="costume-notice" role="status" aria-atomic="true"></p>
-          <div class="avatar-categories" role="group" aria-label="꾸미기 항목"></div>
-          <div class="avatar-options"></div>
-          <p id="avatar-status" role="status" hidden></p>
-          <div class="avatar-actions">
-            <button id="avatar-defaults" class="button secondary" type="button">기본 외형</button>
-            <div class="avatar-confirm-actions">
-              <button class="button secondary close" type="button">취소</button>
-              <button class="button primary" type="submit">저장</button>
-            </div>
-          </div>
-        </form>
-      </div>
+        <div class="peer-shelf-heading"><h3>서재</h3><p id="peer-book-detail" aria-live="polite"></p></div>
+        <div id="peer-books" class="bookshelf miniature-shelf"></div>
+        <dl class="peer-reading"><dt>현재 읽는 책</dt><dd id="peer-current-book"></dd></dl>
+      </section>
     </dialog>
+    <dialog id="avatar-dialog" class="wardrobe-editor" aria-label="캐릭터 꾸미기"></dialog>
     <dialog id="settings-dialog">
       <div class="dialog-heading">
         <h2>설정</h2>
@@ -367,6 +356,7 @@
       <a href="/"><span aria-hidden="true">⌂</span>홈</a>
       <a href="/?screen=create"><span aria-hidden="true">＋</span>방 만들기</a>
       <a href="/?screen=shelf"><span aria-hidden="true">▥</span>내 서재</a>
+      <a href="/?screen=profile"><span aria-hidden="true" class="profile-icon"></span>프로필</a>
     </nav>
     <script type="module" src="./room.js"></script>
   </body>

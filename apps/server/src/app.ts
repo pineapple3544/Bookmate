@@ -1,5 +1,6 @@
 import websocket from "@fastify/websocket";
 import rateLimit from "@fastify/rate-limit";
+import { sessionLimits } from "./session-limits.js";
 import { ApiFailure, registerCore } from "./core.js";
 import type { PrismaClient } from "@prisma/client";
 import Fastify, { type FastifyError } from "fastify";
@@ -38,7 +39,8 @@ export async function buildApp(options: AppOptions) {
     requestTimeout: 10000,
   });
   await app.register(websocket, { options: { maxPayload: 16 * 1024 } });
-  await app.register(rateLimit, { max: 300, timeWindow: "1 minute" });
+  const limits = sessionLimits(options.secureCookies ?? false);
+  await app.register(rateLimit, { max: 300, timeWindow: "1 minute", keyGenerator: limits.key });
   await app.register(cors, {
     origin: options.origins ?? [],
     credentials: true,
@@ -172,6 +174,7 @@ export async function buildApp(options: AppOptions) {
       options.db,
       options.origins ?? [],
       options.secureCookies ?? false,
+      limits,
     );
   if (options.chatStore) registerChat(app, options.chatStore);
   return app;

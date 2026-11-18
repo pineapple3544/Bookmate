@@ -32,13 +32,20 @@ async function actor(n, path = "/") {
   await page.goto(base + path);
   await page.locator("#account-dialog").waitFor();
   await page.locator("#account-switch").click();
+  assert.equal(await page.locator('#account-form [name="nickname"]').count(), 0);
   await page.locator('#account-form [name="email"]').fill(email);
   await page
     .locator('#account-form [name="password"]')
     .fill("integration-password");
-  await page.locator('#account-form [name="nickname"]').fill("사용자 " + n);
   await page.locator('#account-form [type="submit"]').click();
   await page.locator("#account-dialog").waitFor({ state: "detached" });
+  const destination = page.url();
+  await page.goto(base + "/?screen=profile");
+  await page.locator('#profile-form [name="nickname"]').fill("사용자 " + n);
+  const saved = page.waitForResponse(r => r.url().endsWith("/me/profile") && r.request().method() === "PATCH");
+  await page.getByRole("button", {name:"프로필 저장"}).click();
+  assert.ok((await saved).ok());
+  await page.goto(destination);
   return page;
 }
 async function finish(page, rating, review) {
@@ -52,16 +59,26 @@ async function finish(page, rating, review) {
 }
 try {
   const a = await actor(1);
-  await a.goto(base + "/?screen=create");
+  // A signed-in user may be returning from the local preview.
+  await a.goto(base + "/?local=1");
+  await a.locator("#home-view").waitFor();
+  await a.locator('.bookmate-nav [data-screen="create"]').click();
+  await a.locator("#create-view").waitFor();
+  assert.equal(new URL(a.url()).searchParams.has("local"), false,
+    "creating a shared room from the preview must return to the authenticated server");
+  assert.equal(await a.locator('#create-form [name="name"]').count(), 0);
   await a.locator('#create-form [name="title"]').fill("임시 문구1");
   await a.locator('#create-form [name="author"]').fill("임시 문구2");
-  await a.locator('#create-form [name="name"]').fill("사용자 1");
   await a.locator('#create-form [name="capacity"]').selectOption("2");
   await a.locator('#create-form [type="submit"]').click();
   await a.waitForURL(/code=[A-F0-9]{8}/);
   const code = new URL(a.url()).searchParams.get("code");
   const b = await actor(2, "/?code=" + code);
-  await b.locator('#join-form [name="name"]').fill("사용자 2");
+  await b.locator("#join-form").waitFor();
+  assert.equal(await b.locator('#join-form [name="name"]').count(), 0);
+  await b.goto(base + "/");
+  await b.locator("#invite-code").fill(code.toLowerCase());
+  await b.locator("#code-form button").click();
   await b.locator("#join-form button").click();
   await a.waitForFunction(
     () => document.querySelector("#waiting-count").textContent === "참가자 2/2",
@@ -76,6 +93,10 @@ try {
   );
   await a.getByRole("button", { name: "교환독서 시작", exact: true }).click();
   await a.getByRole("link", { name: "독서방 입장", exact: true }).click();
+  let receivedMoves = 0;
+  b.on("websocket", socket => socket.on("framereceived", ({ payload }) => {
+    if (socket.url().endsWith("/live") && JSON.parse(payload).type === "move") receivedMoves++;
+  }));
   await b.goto(base + "/room.html?code=" + code);
   await a.waitForFunction(
     () => document.querySelector(".room-count").textContent === "2명 온라인",
@@ -103,6 +124,27 @@ try {
       document.querySelector(".avatar-label").style.top === position,
     position,
   );
+  // Measure the observer's rendered coordinates during an actual 208-pixel walk.
+  const beforeWalk = receivedMoves;
+  await b.evaluate(() => {
+    const label = document.querySelector(".avatar-label");
+    window.walkPositions = new Set();
+    function sample() {
+      window.walkPositions.add(label.style.left);
+      if (label.style.left !== "70%") requestAnimationFrame(sample);
+    }
+    sample();
+  });
+  const bounds = await a.locator("#room").boundingBox();
+  await a.mouse.click(bounds.x + bounds.width * 0.7, bounds.y + bounds.height * 0.46);
+  await b.waitForFunction(() => window.walkPositions.has("70%"));
+  // The canvas rounds x to whole pixels in its 640-pixel world.
+  const rendered = await b.evaluate(() =>
+    new Set([...window.walkPositions].map(left => Math.round(parseFloat(left) * 6.4))).size
+  );
+  const packets = receivedMoves - beforeWalk;
+  console.log("Observer walk:", packets, "move packets,", rendered, "distinct on-screen positions");
+  assert.ok(packets > 0 && rendered > packets + 5, "observer should render intermediate positions between packets");
   await finish(a, 4.5, "임시 문구4");
   await b.waitForFunction(() => !document.querySelector("#complete").disabled);
   await finish(b, 5, "임시 문구5");

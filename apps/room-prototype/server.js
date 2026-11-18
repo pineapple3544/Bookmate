@@ -7,6 +7,7 @@ const routes = new Map([
   ["/home.html", ["home.html", "text/html; charset=utf-8"]],
   ["/room.html", ["index.html", "text/html; charset=utf-8"]],
   ["/exchange.js", ["exchange.js", "text/javascript; charset=utf-8"]],
+  ["/profile.js", ["profile.js", "text/javascript; charset=utf-8"]],
   ["/rating.js", ["rating.js", "text/javascript; charset=utf-8"]],
   [
     "/exchange-client.js",
@@ -17,6 +18,8 @@ const routes = new Map([
   ["/comment-book.png", ["comment-book.png", "image/png"]],
   ["/avatar-shop-awning.png", ["avatar-shop-awning.png", "image/png"]],
   ["/room.js", ["room.js", "text/javascript; charset=utf-8"]],
+  ["/interaction.js", ["interaction.js", "text/javascript; charset=utf-8"]],
+  ["/wardrobe.js", ["wardrobe.js", "text/javascript; charset=utf-8"]],
   ["/avatar.js", ["avatar.js", "text/javascript; charset=utf-8"]],
   ["/chat.js", ["chat.js", "text/javascript; charset=utf-8"]],
 ]);

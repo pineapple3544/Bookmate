@@ -156,8 +156,18 @@ const legacyOptions = {
 const legacyBottomColors = { black: "ink", denim: "sky", stripedPants: "striped" };
 const legacySkirtPatterns = { plaidSkirt: "plaid", stripedSkirt: "striped" };
 
+export function normalizePetLook(value) {
+  const title = typeof value?.title === "string" ? value.title.trim() : "";
+  const hex = /^#[0-9a-f]{6}$/i;
+  if (!title || /[\u0000\uD800-\uDFFF]/u.test(title) ||
+      typeof value.color !== "string" || !hex.test(value.color) ||
+      typeof value.art !== "string" || !hex.test(value.art)) return null;
+  return { title: Array.from(title).slice(0, 80).join(""), color: value.color, art: value.art };
+}
+
 export function normalizeAppearance(value) {
   const appearance = {};
+  if (value?.palette === "personal") appearance.palette = "personal";
   for (const [name, fallback] of Object.entries(defaults)) {
     const original = value?.[name];
     const key = legacyOptions[name]?.[original] ?? original;
@@ -480,12 +490,13 @@ const expressionsEyes = {
 
 export function drawAvatar(ctx, x, y, slot, appearance, { scale = 1, step = 0 } = {}) {
   const { hair, hairstyle, skin, skinShade, clothes, top, bottom, bottomColor, shoes, expression, accessory } = appearance;
-  const hairColor = hairColors[hair] ?? defaultHair[slot % defaultHair.length];
+  const paletteSlot = appearance.palette === "personal" ? 0 : slot;
+  const hairColor = hairColors[hair] ?? defaultHair[paletteSlot % defaultHair.length];
   const skinColor = skinTone(skin, skinShade);
   const costume = costumes[top];
   const team = baseball[top];
   const shirtColor = costume?.shirt ?? team?.[1] ??
-    (clothes === "default" ? outfitColors[top] ?? defaultClothes[slot % defaultClothes.length] : clothesColors[clothes]);
+    (clothes === "default" ? outfitColors[top] ?? defaultClothes[paletteSlot % defaultClothes.length] : clothesColors[clothes]);
   const visibleAccessory = costume ? "none" : accessory;
   const pixel = (left, upper, width, height, color) => {
     // Snap shared edges so adjacent rectangles meet even at fractional scales.
@@ -666,7 +677,7 @@ export function drawAvatar(ctx, x, y, slot, appearance, { scale = 1, step = 0 } 
 
 export function drawAvatarOption(ctx, category, value, slot, draft) {
   ctx.clearRect(0, 0, 40, 40);
-  const base = normalizeAppearance({ hair: draft.hair, skin: draft.skin, skinShade: draft.skinShade, clothes: draft.clothes });
+  const base = normalizeAppearance({ palette: draft.palette, hair: draft.hair, skin: draft.skin, skinShade: draft.skinShade, clothes: draft.clothes });
   const appearance = { ...base, [category]: value };
   if (category === "accessory") {
     const parts = decorations[value];

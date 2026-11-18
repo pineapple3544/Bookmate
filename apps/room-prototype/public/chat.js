@@ -311,5 +311,5 @@ export function createChat({
   sendButton.disabled = true;
   void heartbeat();
   void poll();
-  return { positionBubbles, heartbeat };
+  return { positionBubbles, heartbeat, isSpeaking: slot => bubbles.has(slot) };
 }

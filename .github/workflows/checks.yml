@@ -60,3 +60,4 @@ jobs:
           npm run test:exchange-browser -w @bookmate/room-prototype
           npm run test:p2p-browser -w @bookmate/room-prototype
           node apps/room-prototype/test/ten-readers.mjs
+          node apps/room-prototype/test/wardrobe-browser.mjs

@@ -60,7 +60,17 @@ test(
         (await call("GET", "/exchanges", a.cookie)).json().codes,
         [room.code],
       );
-      assert.equal((await call("GET", path, b.cookie)).json().room.me, -1);
+      const firstView = await call("GET", path, a.cookie);
+      const guestView = await call("GET", path, b.cookie);
+      assert.equal(guestView.json().room.me, -1);
+      assert.equal(firstView.headers["x-ratelimit-remaining"],
+        guestView.headers["x-ratelimit-remaining"], "accounts behind one proxy have independent quotas");
+      const forged = await call("GET", path, "bookmate_session=" + "1".repeat(64));
+      const unknown = await call("GET", path, "bookmate_session=" + "2".repeat(64));
+      assert.equal(forged.statusCode, 401);
+      assert.equal(unknown.statusCode, 401);
+      assert.equal(Number(unknown.headers["x-ratelimit-remaining"]),
+        Number(forged.headers["x-ratelimit-remaining"]) - 1, "unknown credentials share the IP quota");
       assert.equal(
         (await call("POST", path + "/start", a.cookie, {})).statusCode,
         409,
@@ -218,6 +228,59 @@ test(
         (await call("GET", path, c.cookie)).json().room.members[0].review,
         undefined,
       );
+      const defaults = "/me/appearance";
+      assert.equal((await call("GET", defaults)).statusCode, 401);
+      assert.equal((await call("PATCH", defaults, "", { top: "frog" })).statusCode, 401);
+      assert.deepEqual((await call("GET", defaults, a.cookie)).json(), { appearance: null });
+      const invalidPet = { pet: "book\u0000title" };
+      assert.equal((await call("PATCH", defaults, a.cookie, invalidPet)).statusCode, 400);
+      assert.equal((await call("POST", path + "/appearance", b.cookie, invalidPet)).statusCode, 400);
+      const petLook = { title: "달빛 서점", color: "#abC123", art: "#1234ab" };
+      const blue = { clothes: "blue", palette: "personal", pet: "book-1", petLook };
+      const green = { clothes: "green" }, frog = { top: "frog" };
+      assert.deepEqual((await call("PATCH", defaults, a.cookie, { pet: "", petLook })).json(),
+        { appearance: { pet: "" } });
+      assert.equal((await call("PATCH", defaults, a.cookie,
+        { pet: "book-1", petLook: { ...petLook, color: "red" } })).statusCode, 400);
+      assert.equal((await call("POST", path + "/appearance", b.cookie,
+        { pet: "book-1", petLook: { ...petLook, title: "bad\u0000title" } })).statusCode, 400);
+      const longTitle = "📚".repeat(81);
+      const trimmed = await call("PATCH", defaults, a.cookie,
+        { ...blue, petLook: { ...petLook, title: "  " + longTitle, inventory: ["book-2"] } });
+      assert.deepEqual(trimmed.json().appearance.petLook, { ...petLook, title: "📚".repeat(80) });
+      assert.deepEqual((await call("PATCH", defaults, a.cookie, blue)).json(), { appearance: blue });
+      assert.deepEqual((await call("GET", defaults, b.cookie)).json(), { appearance: null });
+      await call("PATCH", defaults, b.cookie, green);
+
+      // Old memberships keep both their room outfit and their legacy empty appearance.
+      const oldRoom = (await call("POST", path + "/join", a.cookie, {})).json().room;
+      assert.equal(oldRoom.members.find((m: any) => m.id === a.id).appearance, null);
+      assert.deepEqual(oldRoom.members.find((m: any) => m.id === b.id).appearance,
+        { hairstyle: "bob", top: "frog", skinShade: 75 });
+
+      const newRoom = (await call("POST", "/exchanges", a.cookie,
+        { title: "옷장", name: "A", capacity: 2, appearance: frog })).json().room;
+      rooms.push(newRoom.id);
+      const newPath = "/exchanges/" + newRoom.code;
+      assert.deepEqual(newRoom.members[0].appearance, blue);
+      const joined = (await call("POST", newPath + "/join", b.cookie,
+        { name: "B", appearance: frog })).json().room;
+      assert.deepEqual(joined.members[0].appearance, blue);
+      assert.deepEqual(joined.members[1].appearance, green);
+      await call("POST", newPath + "/appearance", a.cookie, frog);
+      assert.deepEqual((await call("GET", defaults, a.cookie)).json(), { appearance: blue });
+      await call("PATCH", defaults, b.cookie, blue);
+      const retried = (await call("POST", newPath + "/join", b.cookie, {})).json().room;
+      assert.deepEqual(retried.members.map((m: any) => m.appearance), [frog, green]);
+
+      const publicRoom = (await call("POST", "/rooms", b.cookie,
+        { title: "서재", bookTitle: "책", visibility: "PUBLIC" })).json().room;
+      rooms.push(publicRoom.id);
+      const publicPath = "/rooms/" + publicRoom.id;
+      assert.deepEqual((await call("GET", publicPath, b.cookie)).json().room.members[0].appearance, blue);
+      assert.deepEqual((await call("POST", publicPath + "/join", a.cookie, {})).json().member.appearance, blue);
+      await call("PATCH", defaults, a.cookie, green);
+      assert.deepEqual((await call("POST", publicPath + "/join", a.cookie, {})).json().member.appearance, blue);
     } finally {
       await app.close();
       await db.room.deleteMany({ where: { id: { in: rooms } } });

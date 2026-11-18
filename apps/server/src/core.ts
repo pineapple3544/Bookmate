@@ -1,6 +1,8 @@
 import { registerRecordSync } from "./record-sync.js";
+import type { sessionLimits } from "./session-limits.js";
 import { registerRealtime } from "./realtime.js";
 import { randomBytes, createHash, scrypt, timingSafeEqual } from "node:crypto";
+import { appearance, appearanceSchema, inheritedAppearance } from "./appearance.js";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { PrismaClient, Prisma } from "@prisma/client";
 
@@ -61,19 +63,11 @@ export async function registerCore(
   db: PrismaClient,
   origins: string[],
   secure: boolean,
+  limits: ReturnType<typeof sessionLimits>,
 ) {
-  const cookieName = secure ? "__Host-bookmate_session" : "bookmate_session";
+  const { cookieName, token } = limits;
   const cookie = (token: string, age: number) =>
     `${cookieName}=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${age}${secure ? "; Secure" : ""}`;
-  function token(req: FastifyRequest) {
-    return (
-      (req.headers.cookie ?? "")
-        .split(";")
-        .map((x) => x.trim())
-        .find((x) => x.startsWith(cookieName + "="))
-        ?.slice(cookieName.length + 1) ?? ""
-    );
-  }
   async function authenticatedSession(req: FastifyRequest) {
     const raw = token(req);
     if (!/^[a-f0-9]{64}$/.test(raw)) return fail(401, "UNAUTHENTICATED");
@@ -82,6 +76,7 @@ export async function registerCore(
     });
     if (!session || session.expiresAt.getTime() <= Date.now())
       return fail(401, "UNAUTHENTICATED");
+    limits.remember(session);
     return session;
   }
   async function userId(req: FastifyRequest) {
@@ -128,19 +123,18 @@ export async function registerCore(
     },
     ["email", "password"],
   );
-  const authLimit = { rateLimit: { max: 15, timeWindow: "10 minutes" } };
+  const authLimit = { rateLimit: { max: 15, timeWindow: "10 minutes", keyGenerator: (req: FastifyRequest) => req.ip } };
   app.post<{ Body: { email: string; password: string; nickname?: string } }>(
     "/api/v1/auth/register",
     {
       config: authLimit,
       schema: {
-        body: { ...credentials, required: ["email", "password", "nickname"] },
+        body: credentials,
       },
     },
     async (req, reply) => {
-      const email = req.body.email.trim().toLowerCase(),
-        nickname = req.body.nickname!.trim();
-      if (!nickname) fail(400, "INVALID_NICKNAME");
+      const email = req.body.email.trim().toLowerCase();
+      const nickname = "사용자 " + randomBytes(3).toString("hex");
       const encoded = await passwordHash(req.body.password);
       const user = await db.user.create({
         data: { email, nickname, passwordHash: encoded },
@@ -162,7 +156,7 @@ export async function registerCore(
       )
         return fail(401, "INVALID_CREDENTIALS");
       const raw = randomBytes(32).toString("hex");
-      await db.$transaction(async (tx) => {
+      const session = await db.$transaction(async (tx) => {
         await tx.session.deleteMany({
           where: {
             OR: [
@@ -171,7 +165,7 @@ export async function registerCore(
             ],
           },
         });
-        await tx.session.create({
+        return tx.session.create({
           data: {
             tokenHash: hash(raw),
             userId: user.id,
@@ -179,7 +173,12 @@ export async function registerCore(
           },
         });
       });
-      if (token(req)) realtime.revokeSession(hash(token(req)));
+      if (token(req)) {
+        const previous = hash(token(req));
+        limits.forget(previous);
+        realtime.revokeSession(previous);
+      }
+      limits.remember(session);
       reply.header("Set-Cookie", cookie(raw, 7 * 86400));
       return {
         user: { id: user.id, email: user.email, nickname: user.nickname },
@@ -192,9 +191,82 @@ export async function registerCore(
       select: { ...publicUser, email: true },
     }),
   }));
+  const profileFields = { nickname: true, bio: true, profilePublic: true } as const;
+  async function profileLibrary(tx: Tx, uid: string) {
+    const entries = await tx.roomMember.findMany({
+      where: { userId: uid, room: { exchangeCode: { not: null }, completedAt: { not: null } } },
+      orderBy: [{ readingCompletedAt: "desc" }, { roomId: "asc" }],
+      select: { room: { select: { bookTitle: true, author: true, theme: true } } },
+    });
+    const current = await tx.roomMember.findFirst({
+      where: { userId: uid, readingStatus: "READING", readingStartedAt: { not: null }, readingCompletedAt: null,
+        room: { exchangeCode: { not: null }, startedAt: { not: null }, completedAt: null } },
+      orderBy: [{ readingStartedAt: "desc" }, { roomId: "asc" }],
+      select: { room: { select: { bookTitle: true } } },
+    });
+    return {
+      books: entries.map(({ room }) => ({ title: room.bookTitle, author: room.author, theme: room.theme })),
+      currentBookTitle: current?.room.bookTitle ?? null,
+    };
+  }
+  app.get("/api/v1/me/profile", async (req, reply) => {
+    const uid = await userId(req);
+    reply.header("cache-control", "private, no-store");
+    const profile = await db.user.findUniqueOrThrow({ where: { id: uid }, select: profileFields });
+    return { ...profile, ...await profileLibrary(db, uid) };
+  });
+  app.patch<{ Body: { nickname: string; bio: string; profilePublic: boolean } }>(
+    "/api/v1/me/profile",
+    { schema: { body: object({ nickname: text(40), bio: { type: "string", maxLength: 300 },
+      profilePublic: { type: "boolean" } }, ["nickname", "bio", "profilePublic"]) } },
+    async (req) => {
+      const uid = await userId(req);
+      const nickname = req.body.nickname.trim();
+      if (!nickname) return fail(400, "INVALID_NICKNAME");
+      return db.user.update({ where: { id: uid }, select: profileFields,
+        data: { nickname, bio: req.body.bio.trim(), profilePublic: req.body.profilePublic } });
+    },
+  );
+  app.get<{ Params: { roomId: string; targetId: string } }>(
+    "/api/v1/rooms/:roomId/members/:targetId/profile",
+    { schema: { params: object({ roomId: idSchema, targetId: idSchema }, ["roomId", "targetId"]) } },
+    async (req, reply) => {
+      const uid = await userId(req);
+      const { roomId, targetId } = req.params;
+      reply.header("cache-control", "private, no-store");
+      return db.$transaction(async tx => {
+        await member(tx, roomId, uid);
+        const target = await tx.roomMember.findUnique({ where: memberKey(roomId, targetId),
+          select: { user: { select: profileFields } } });
+        if (!target) return fail(404, "MEMBER_NOT_FOUND");
+        if (!target.user.profilePublic && targetId !== uid) return { profilePublic: false };
+        return { ...target.user, ...await profileLibrary(tx, targetId) };
+      }, { isolationLevel: "RepeatableRead" });
+    },
+  );
+  app.get("/api/v1/me/appearance", async (req) => {
+    const user = await db.user.findUniqueOrThrow({
+      where: { id: await userId(req) },
+      select: { defaultAppearance: true },
+    });
+    return { appearance: user.defaultAppearance };
+  });
+  app.patch(
+    "/api/v1/me/appearance",
+    { schema: { body: appearanceSchema } },
+    async (req) => {
+      const user = await db.user.update({
+        where: { id: await userId(req) },
+        data: { defaultAppearance: appearance(req.body) },
+        select: { defaultAppearance: true },
+      });
+      return { appearance: user.defaultAppearance };
+    },
+  );
   app.post("/api/v1/auth/logout", async (req, reply) => {
     const tokenHash = hash(token(req));
     await db.session.deleteMany({ where: { tokenHash } });
+    limits.forget(tokenHash);
     realtime.revokeSession(tokenHash);
     return reply.header("Set-Cookie", cookie("", 0)).code(204).send();
   });
@@ -271,23 +343,26 @@ export async function registerCore(
         title = req.body.title.trim(),
         bookTitle = req.body.bookTitle.trim();
       if (!title || !bookTitle) fail(400, "INVALID_TITLE");
-      const room = await db.room.create({
-        data: {
-          title,
-          bookTitle,
-          visibility: req.body.visibility ?? "PRIVATE",
-          maxMembers: req.body.maxMembers ?? 4,
-          bookHolderId: uid,
-          members: {
-            create: {
-              userId: uid,
-              role: "ADMIN",
-              readingOrder: 1,
-              readingStatus: "READING",
-              readingStartedAt: new Date(),
+      const room = await db.$transaction(async (tx) => {
+        return tx.room.create({
+          data: {
+            title,
+            bookTitle,
+            visibility: req.body.visibility ?? "PRIVATE",
+            maxMembers: req.body.maxMembers ?? 4,
+            bookHolderId: uid,
+            members: {
+              create: {
+                userId: uid,
+                role: "ADMIN",
+                appearance: await inheritedAppearance(tx, uid),
+                readingOrder: 1,
+                readingStatus: "READING",
+                readingStartedAt: new Date(),
+              },
             },
           },
-        },
+        });
       });
       return reply.code(201).send({ room: roomJson(room) });
     },
@@ -305,7 +380,7 @@ export async function registerCore(
             select: {
               roomId: true, userId: true, role: true, readingOrder: true,
               readingStatus: true, readingStartedAt: true, readingCompletedAt: true,
-              displayName: true, appearance: true, joinedAt: true,
+              appearance: true, joinedAt: true,
               user: { select: publicUser }, rating: true, review: true, quote: true,
             },
           },
@@ -313,7 +388,7 @@ export async function registerCore(
       });
       if (!room) return fail(403, "NOT_A_MEMBER");
       const members = room.members.map(({ rating, review, quote, ...member }) => ({
-        ...member,
+        ...member, displayName: member.user.nickname,
         ...visibleReview({ userId: member.userId, rating, review, quote }, uid, room.completedAt),
       }));
       return { room: roomJson({ ...room, members }) };
@@ -442,6 +517,7 @@ export async function registerCore(
             roomId: id,
             userId: uid,
             readingOrder: (order._max.readingOrder ?? 0) + 1,
+            appearance: await inheritedAppearance(tx, uid),
           },
         });
         await tx.room.update({

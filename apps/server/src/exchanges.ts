@@ -1,4 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto";
+import { appearance, appearanceSchema, inheritedAppearance } from "./appearance.js";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { PrismaClient, Prisma } from "@prisma/client";
 import { ApiFailure } from "./errors.js";
@@ -14,28 +15,6 @@ const included = {
 };
 function clean(value: unknown, max: number) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
-}
-function appearance(input: any): Prisma.InputJsonObject {
-  const result: Record<string, string | number> = {};
-  for (const key of [
-    "hairstyle",
-    "hair",
-    "skin",
-    "top",
-    "clothes",
-    "bottom",
-    "bottomColor",
-    "shoes",
-    "accessory",
-    "expression",
-    "pet",
-  ]) {
-    if (typeof input?.[key] === "string")
-      result[key] = input[key].slice(0, key === "pet" ? 350 : 40);
-  }
-  if (typeof input?.skinShade === "number" && Number.isFinite(input.skinShade))
-    result.skinShade = Math.max(0, Math.min(100, input.skinShade));
-  return result;
 }
 export function visibleReview(
   member: {
@@ -67,7 +46,7 @@ function view(room: any, uid: string) {
     isHost: room.exchangeOwnerId === uid,
     members: room.members.map((m: any) => ({
       id: m.userId,
-      name: m.displayName ?? m.user.nickname,
+      name: m.user.nickname,
       isHost: room.exchangeOwnerId === m.userId,
       ...(me >= 0
         ? {
@@ -98,16 +77,14 @@ export function registerExchanges(
   const options = (input: any, minimum = 2) => {
     const title = clean(input.title, 80),
       author = clean(input.author, 50),
-      name = clean(input.name, 24),
       capacity = Number(input.capacity);
     if (
       !title ||
-      !name ||
       !Number.isInteger(capacity) ||
       capacity < minimum ||
       capacity > 10
     )
-      fail(400, "책 제목, 닉네임과 참여 인원을 확인해 주세요.");
+      fail(400, "책 제목과 참여 인원을 확인해 주세요.");
     const theme = [
       "mint",
       "plum",
@@ -119,7 +96,7 @@ export function registerExchanges(
     ].includes(input.theme)
       ? input.theme
       : "mint";
-    return { title, author, name, capacity, theme };
+    return { title, author, capacity, theme };
   };
   app.get<{ Querystring: { before?: string } }>(
     "/api/v1/exchanges",
@@ -155,11 +132,10 @@ export function registerExchanges(
       schema: {
         body: {
           type: "object",
-          required: ["title", "name", "capacity"],
+          required: ["title", "capacity"],
           properties: {
             title: { type: "string", maxLength: 80 },
             author: { type: "string", maxLength: 50 },
-            name: { type: "string", maxLength: 24 },
             capacity: {
               anyOf: [{ type: "integer" }, { type: "string", maxLength: 2 }],
             },
@@ -171,25 +147,27 @@ export function registerExchanges(
     async (req, reply) => {
       const uid = await authenticate(req),
         o = options(req.body);
-      const room = await db.room.create({
-        data: {
-          title: o.title,
-          bookTitle: o.title,
-          author: o.author,
-          theme: o.theme,
-          maxMembers: o.capacity,
-          exchangeCode: randomBytes(4).toString("hex").toUpperCase(),
-          exchangeOwnerId: uid,
-          members: {
-            create: {
-              userId: uid,
-              role: "ADMIN",
-              displayName: o.name,
-              readingOrder: 1,
+      const room = await db.$transaction(async (tx) => {
+        return tx.room.create({
+          data: {
+            title: o.title,
+            bookTitle: o.title,
+            author: o.author,
+            theme: o.theme,
+            maxMembers: o.capacity,
+            exchangeCode: randomBytes(4).toString("hex").toUpperCase(),
+            exchangeOwnerId: uid,
+            members: {
+              create: {
+                userId: uid,
+                role: "ADMIN",
+                appearance: await inheritedAppearance(tx, uid),
+                readingOrder: 1,
+              },
             },
           },
-        },
-        include: included,
+          include: included,
+        });
       });
       return reply.code(201).send({ room: view(room, uid) });
     },
@@ -235,7 +213,10 @@ export function registerExchanges(
             },
           },
         },
-        body: { type: "object" },
+        body: {
+          type: "object",
+          properties: { ...appearanceSchema.properties, appearance: appearanceSchema },
+        },
       },
     },
     async (req) => {
@@ -251,15 +232,11 @@ export function registerExchanges(
           if (person) return view(room, uid);
           if (room.startedAt || members.length >= room.maxMembers)
             fail(409, "이미 시작했거나 인원이 찬 방이에요.");
-          const name = clean(input.name, 24);
-          if (!name) fail(400, "닉네임을 입력해 주세요.");
-          if (members.some((m) => (m.displayName ?? m.user.nickname) === name))
-            fail(409, "이미 사용 중인 닉네임이에요.");
           await tx.roomMember.create({
             data: {
               roomId: room.id,
               userId: uid,
-              displayName: name,
+              appearance: await inheritedAppearance(tx, uid),
               readingOrder: (members.at(-1)?.readingOrder ?? 0) + 1,
             },
           });
@@ -288,14 +265,6 @@ export function registerExchanges(
             if (room.startedAt)
               fail(409, "교환독서를 시작한 뒤에는 방 옵션을 수정할 수 없어요.");
             const o = options(input, Math.max(2, members.length));
-            if (
-              members.some(
-                (m) =>
-                  m.userId !== uid &&
-                  (m.displayName ?? m.user.nickname) === o.name,
-              )
-            )
-              fail(409, "이미 사용 중인 닉네임이에요.");
             await tx.room.update({
               where: { id: room.id },
               data: {
@@ -305,10 +274,6 @@ export function registerExchanges(
                 theme: o.theme,
                 maxMembers: o.capacity,
               },
-            });
-            await tx.roomMember.update({
-              where: { roomId_userId: { roomId: room.id, userId: uid } },
-              data: { displayName: o.name },
             });
           } else if (action === "order") {
             if (room.startedAt)

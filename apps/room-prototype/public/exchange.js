@@ -1,6 +1,7 @@
-import { serverMode, ensureAccount } from "./account.js";
-import { exchangeCode as code, exchangeRequest, exchangeUrl, myExchanges, themes } from "./exchange-client.js";
+import { serverMode, serverAvailable, localExchangeAvailable, ensureAccount, account } from "./account.js";
+import { exchangeCode as code, exchangeRequest, exchangeUrl, myExchanges, getDefaultAppearance, saveDefaultAppearance, themes } from "./exchange-client.js";
 import { drawAvatar, normalizeAppearance } from "./avatar.js";
+import { myProfile, renderBooks, saveProfile } from "./profile.js";
 import { ratingStars, setupRating } from "./rating.js";
 
 const $ = selector => document.querySelector(selector);
@@ -18,8 +19,9 @@ function notifySaved(message) {
   ], { duration: 1600 });
   saveAnimation.onfinish = () => { saveToast.textContent = ""; };
 }
-const screen = new URLSearchParams(location.search).get("screen") ?? (code ? "waiting" : "home");
-document.querySelector('.bookmate-nav [data-screen="' + (["create", "shelf"].includes(screen) ? screen : "home") + '"]')
+const requestedScreen = new URLSearchParams(location.search).get("screen") ?? (code ? "waiting" : "home");
+const screen = requestedScreen === "wardrobe" ? "profile" : requestedScreen;
+document.querySelector('.bookmate-nav [data-screen="' + (["create", "shelf", "profile"].includes(screen) ? screen : "home") + '"]')
   .setAttribute("aria-current", "page");
 for (const button of document.querySelectorAll("[data-close]")) {
   button.onclick = () => button.closest("dialog").close();
@@ -174,6 +176,9 @@ function waiting(initial) {
     notifySaved("방 옵션을 저장했어요.");
   }, settingsStatus);
   const invite = new URL(exchangeUrl(code), location.origin).href;
+  if (serverAvailable && !serverMode) {
+    $("#invite-status").textContent = "로컬 체험방입니다. 다른 브라우저와 함께하려면 ‘방 만들기’를 선택하세요.";
+  }
   $("#invite-link").value = invite;
   $("#show-code").textContent = code;
   const inviteStatus = $("#invite-status");
@@ -237,7 +242,7 @@ function waiting(initial) {
     edit.type = "button";
     edit.onclick = () => {
       const { title, author, capacity, theme } = room;
-      for (const [key, value] of Object.entries({ title, author, capacity, theme, name: room.members[room.me].name })) {
+      for (const [key, value] of Object.entries({ title, author, capacity, theme })) {
         settingsForm.elements.namedItem(key).value = value;
       }
       settingsStatus.textContent = "";
@@ -473,6 +478,53 @@ function setupRoomOptions(create) {
   return updateCover;
 }
 
+async function profileView() {
+  const { createWardrobe, loadPets, petCollectionKeyFor } = await import("./wardrobe.js");
+  const [appearance, profile] = await Promise.all([getDefaultAppearance(), myProfile()]);
+  const form = $("#profile-form");
+  form.elements.nickname.value = profile.nickname;
+  form.elements.bio.value = profile.bio;
+  form.elements.profilePublic.checked = profile.profilePublic;
+  form.elements.profilePublic.closest("label").hidden = !serverMode && !localExchangeAvailable;
+  renderBooks($("#profile-books"), profile.books);
+  form.onsubmit = async event => {
+    event.preventDefault();
+    const nickname = form.elements.nickname.value.trim();
+    const feedback = $("#profile-status");
+    if (!nickname) {
+      feedback.textContent = "닉네임을 입력해 주세요.";
+      form.elements.nickname.focus();
+      return;
+    }
+    const submit = form.querySelector("button");
+    submit.disabled = true;
+    feedback.textContent = "";
+    try {
+      const saved = await saveProfile({ nickname, bio: form.elements.bio.value.trim(),
+        profilePublic: form.elements.profilePublic.checked });
+      form.elements.nickname.value = saved.nickname;
+      form.elements.bio.value = saved.bio;
+      $("#avatar-owner").textContent = saved.nickname;
+      notifySaved("프로필을 저장했어요.");
+    } catch (error) { feedback.textContent = error.message; }
+    finally { submit.disabled = false; }
+  };
+  const key = petCollectionKeyFor(account?.id);
+  let pets = loadPets(key);
+  const editor = createWardrobe($("#wardrobe-editor"), {
+    getPets: () => pets,
+    save: saveDefaultAppearance,
+    onSaved: () => notifySaved("캐릭터 외형을 저장했어요."),
+  });
+  $("#wardrobe-view").hidden = false;
+  editor.open({ appearance: { ...appearance, palette: "personal" }, owner: profile.nickname });
+  window.addEventListener("storage", event => {
+    if (event.key !== key && event.key !== null) return;
+    pets = loadPets(key);
+    editor.refreshPets();
+  });
+}
+
 function createRoom() {
   $("#create-view").hidden = false;
   setupRoomOptions($("#create-form"));
@@ -499,12 +551,16 @@ async function openDemo() {
 }
 
 try {
-  if (screen === "demo" && serverMode) {
+  if (screen === "create" && serverAvailable && !serverMode) {
+    // Old bookmarks can still point to the preview's create screen.
+    location.replace("/?screen=create");
+  } else if (screen === "demo" && serverMode) {
     const url=new URL(location.href);url.searchParams.set("local","1");location.replace(url.href);
   } else {
   if(serverMode) await ensureAccount();
   if (screen === "home") await home();
   else if (screen === "shelf") await shelf();
+  else if (screen === "profile") await profileView();
   else if (screen === "create") createRoom();
   else if (screen === "demo") await openDemo();
   else if (["waiting", "history", "ticket"].includes(screen) && /^[A-F0-9]{8}$/.test(code)) {
@@ -519,4 +575,16 @@ try {
   }
 } catch (error) {
   status.textContent = error.message;
+  if (screen === "waiting" && serverMode && localExchangeAvailable &&
+      error.status === 404 && /^[A-F0-9]{8}$/.test(code)) {
+    // A code can predate server-backed rooms. Only offer the preview if it exists.
+    const preview = await fetch("/api/exchanges/" + code).catch(() => null);
+    if (preview?.ok) {
+      status.replaceChildren(
+        document.createTextNode("이 코드는 로컬 체험방 코드입니다. 다른 브라우저와 함께하려면 서버 방을 만들어 주세요. "),
+        link("기존 체험방 열기", exchangeUrl(code) + "&local=1"),
+        link("서버 방 만들기", "/?screen=create", "primary"),
+      );
+    }
+  }
 }

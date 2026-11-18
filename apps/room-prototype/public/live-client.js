@@ -36,10 +36,13 @@ export function createLiveRoom({ room, onPosition, onPresence, onStatus }) {
       if (data.type === "presence") snapshot = data;
       emit(data);
       if (data.type === "presence") {
+        const previousOnline = online;
         online = data.onlineUserIds.map(slot).filter((i) => i !== undefined);
         onPresence(online);
-        for (const [id, position] of Object.entries(data.positions))
-          if (slot(id) !== undefined) onPosition(slot(id), position);
+        for (const [id, position] of Object.entries(data.positions)) {
+          const index = slot(id);
+          if (index !== undefined) onPosition(index, position, !previousOnline.includes(index));
+        }
       } else if (data.type === "move" && slot(data.userId) !== undefined)
         onPosition(slot(data.userId), data);
     };

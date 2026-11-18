@@ -44,6 +44,72 @@ async function send(page, text) {
 try {
   const a = await context.newPage();
   await ready(a);
+  const avatar = a.locator(".avatar-label.active");
+  const x = () => avatar.evaluate(el => parseFloat(el.style.left) * 6.4);
+  async function waitForX(value, sign) {
+    await a.waitForFunction(({ value, sign }) =>
+      sign * (parseFloat(document.querySelector(".avatar-label.active").style.left) * 6.4 - value) >= 0,
+      { value, sign }, { timeout: 2500 });
+  }
+  async function stoppedX() {
+    await a.evaluate(() => new Promise(requestAnimationFrame));
+    const released = await x();
+    await a.waitForTimeout(160);
+    assert.equal(await x(), released, "avatar drifted after release");
+    return released;
+  }
+  const initialX = await x();
+  await a.keyboard.down("ArrowRight");
+  await waitForX(initialX + 32, 1);
+  await a.keyboard.up("ArrowRight");
+  const keyboardEnd = await stoppedX();
+  const left = await a.locator('[data-direction="left"]').boundingBox();
+  await a.mouse.move(left.x + left.width / 2, left.y + left.height / 2);
+  await a.mouse.down();
+  await a.mouse.move(left.x - 20, left.y - 20);
+  await waitForX(keyboardEnd - 32, -1);
+  await a.mouse.up();
+  const pointerEnd = await stoppedX();
+  await a.keyboard.press("ArrowRight");
+  const tapEnd = await stoppedX();
+  assert.ok(tapEnd > pointerEnd && tapEnd < pointerEnd + 16, "tap should move briefly");
+  await a.keyboard.down("ArrowRight");
+  await waitForX(tapEnd + 5, 1);
+  await a.evaluate(() => window.dispatchEvent(new Event("blur")));
+  await stoppedX();
+  await a.keyboard.up("ArrowRight");
+  const beforeChat = await x();
+  await a.locator("#chat-panel").evaluate(el => { el.open = true; });
+  await a.locator("#chat-input").focus();
+  await a.keyboard.down("ArrowLeft");
+  await a.waitForTimeout(150);
+  await a.keyboard.up("ArrowLeft");
+  assert.equal(await x(), beforeChat, "chat editing must keep arrow keys");
+  await a.locator("#room").focus();
+  await a.keyboard.down("ArrowLeft");
+  await waitForX(beforeChat - 5, -1);
+  await a.mouse.move(left.x + left.width / 2, left.y + left.height / 2);
+  await a.mouse.down();
+  await a.keyboard.up("ArrowLeft");
+  const pointerOnly = await x();
+  await waitForX(pointerOnly - 12, -1);
+  await a.mouse.up();
+  await stoppedX();
+  console.log("PASS desktop movement: holds, outside release, short tap, overlapping controls, chat and focus loss");
+  for (const viewport of [
+    { width: 1280, height: 800 }, { width: 1440, height: 900 },
+    { width: 375, height: 812 }, { width: 390, height: 844 },
+  ]) {
+    await a.setViewportSize(viewport);
+    for (const selector of ["#interact", "#record", "#complete", "#chat-send"]) {
+      const reachable = await a.locator(selector).evaluate(button => {
+        const rect = button.getBoundingClientRect();
+        const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+        return rect.width >= 44 && rect.height >= 44 && button.contains(hit);
+      });
+      assert.ok(reachable, `${selector} at ${viewport.width}×${viewport.height}`);
+    }
+  }
   await send(a, "임시 문구1");
   await a.waitForSelector(".speech-bubble");
   const b = await context.newPage();
@@ -57,7 +123,26 @@ try {
   await a.waitForFunction(
     () => document.querySelector(".room-count").textContent === "2명 온라인",
   );
+  await b.setViewportSize({ width: 375, height: 812 });
+  await b.waitForFunction(() => document.querySelectorAll(".avatar-label:not([hidden])").length === 2);
+  const other = b.locator(".avatar-label").nth(2);
+  const tap = await other.evaluate(el => {
+    const room = document.querySelector("#room").getBoundingClientRect();
+    return {
+      x: room.left + room.width * parseFloat(el.style.left) / 100,
+      y: room.top + room.height * (parseFloat(el.style.top) / 100 + 22 / 400),
+    };
+  });
+  await b.mouse.click(tap.x, tap.y);
+  await other.waitFor({ state: "visible" });
+  assert.equal(await b.locator("#selected-label").textContent(), "사용자 2");
+  const directions = b.locator("#movement-toggle");
+  assert.equal(await b.locator("#movement").isVisible(), false);
+  await directions.press("Enter");
+  assert.equal(await directions.getAttribute("aria-expanded"), "true");
   await b.locator('[data-direction="up"]').click();
+  await directions.press("Space");
+  assert.equal(await b.locator("#movement").isVisible(), false);
   await b.waitForFunction(
     () => document.querySelector("#action-state").textContent === "이동 가능",
   );
@@ -69,7 +154,9 @@ try {
     (y) => document.querySelectorAll(".avatar-label")[1].style.top === y,
     y,
   );
+  await a.locator(".avatar-label").nth(1).waitFor({ state: "hidden" });
   await send(b, "임시 문구2");
+  await a.locator(".avatar-label").nth(1).waitFor({ state: "visible" });
   await a.waitForFunction(
     () =>
       document.querySelector(".speech-bubble")?.textContent === "임시 문구2",
@@ -79,6 +166,8 @@ try {
     {},
     { timeout: 8000 },
   );
+  await a.locator(".avatar-label").nth(1).waitFor({ state: "hidden" });
+  await a.setViewportSize({ width: 1280, height: 900 });
   assert.equal(await a.locator(".chat-message").count(), 2);
   await b.close();
   await a.waitForFunction(

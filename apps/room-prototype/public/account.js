@@ -5,6 +5,8 @@ const settings = await fetch("/runtime-config.json", {
   if (!response.ok) throw new Error("서버 설정을 불러오지 못했습니다");
   return response.json();
 });
+export const serverAvailable = settings.server;
+export const localExchangeAvailable = settings.localExchange;
 export const serverMode =
   settings.server && new URLSearchParams(location.search).get("local") !== "1";
 export let account = null;
@@ -82,7 +84,7 @@ export async function ensureAccount() {
       dialog.id = "account-dialog";
       // Static form markup; all server/user messages below use textContent.
       dialog.innerHTML =
-        '<form id="account-form"><h2>로그인</h2><label>이메일<input name="email" type="email" required autocomplete="email"></label><label>비밀번호<input name="password" type="password" minlength="10" maxlength="128" required autocomplete="current-password"></label><label id="nickname-label" hidden>닉네임<input name="nickname" maxlength="24" autocomplete="nickname"></label><p id="account-status" role="status"></p><div class="record-actions"><button type="submit" class="button primary">로그인</button><button id="account-switch" type="button" class="button secondary">회원가입</button></div><a href="/room.html">로컬 체험방</a></form>';
+        '<form id="account-form"><h2>로그인</h2><label>이메일<input name="email" type="email" required autocomplete="email"></label><label>비밀번호<input name="password" type="password" minlength="10" maxlength="128" required autocomplete="current-password"></label><p id="account-status" role="status"></p><div class="record-actions"><button type="submit" class="button primary">로그인</button><button id="account-switch" type="button" class="button secondary">회원가입</button></div><a href="/room.html">로컬 체험방</a></form>';
       document.body.append(dialog);
       dialog.addEventListener("cancel", (event) => event.preventDefault());
       dialog.showModal();
@@ -97,8 +99,6 @@ export async function ensureAccount() {
           ? "회원가입"
           : "로그인";
         toggle.textContent = registering ? "로그인" : "회원가입";
-        form.querySelector("#nickname-label").hidden = !registering;
-        form.elements.nickname.required = registering;
         form.elements.password.autocomplete = registering
           ? "new-password"
           : "current-password";

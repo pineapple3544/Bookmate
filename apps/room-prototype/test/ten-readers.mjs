@@ -181,6 +181,55 @@ try {
     .locator("#record-posts")
     .getByText(message, { exact: true })
     .waitFor({ state: "attached" });
+  async function checkPresence(viewers, absent) {
+    await Promise.all(viewers.map(p => p.waitForFunction(absent => {
+      const portraits = [...document.querySelectorAll(".member-avatar")];
+      const labels = [...document.querySelectorAll(".avatar-label")];
+      return [portraits, labels].every(group => group.length === 10 &&
+        group.every((el, i) => el.classList.contains("offline") === (i === absent))) &&
+        document.querySelector(".room-count").textContent === (absent < 0 ? 10 : 9) + "명 온라인";
+    }, absent)));
+  }
+  await checkPresence(pages, -1);
+  const returning = pages.at(-1);
+  const roomUrl = returning.url();
+  await returning.goto("about:blank");
+  await checkPresence(pages.slice(0, -1), 9);
+  await returning.goto(roomUrl);
+  await checkPresence(pages, -1);
+  await returning.locator(".chat-message p").filter({ hasText: message }).first()
+    .waitFor({ state: "attached" });
+  // With 44 pixels between chairs and a 36-pixel reach, both chairs can be usable.
+  const reader = pages[0];
+  const canvas = reader.locator("#room");
+  await canvas.focus();
+  async function holdUntil(key, condition) {
+    await reader.keyboard.down(key);
+    try {
+      await reader.waitForFunction(condition, undefined, { timeout: 5000 });
+    } finally {
+      await reader.keyboard.up(key);
+    }
+  }
+  await canvas.press("e");
+  await reader.waitForFunction(() => document.querySelector("#action-state").textContent === "이동 가능");
+  await holdUntil("ArrowDown", () => parseFloat(document.querySelector(".avatar-label.active").style.top) * 4 + 37 >= 183);
+  await holdUntil("ArrowRight", () => parseFloat(document.querySelector(".avatar-label.active").style.left) * 6.4 >= 236);
+  const focusMark = reader.locator(".interaction-focus:not([hidden])");
+  assert.equal(await focusMark.count(), 1);
+  assert.equal(await focusMark.getAttribute("data-target"), "chair-0");
+  await holdUntil("ArrowRight", () => document.querySelector(".interaction-focus")?.dataset.target === "chair-2");
+  assert.equal(await focusMark.count(), 1);
+  assert.equal(await focusMark.getAttribute("data-target"), "chair-2");
+  await canvas.press("e");
+  await reader.waitForFunction(() => document.querySelector("#action-state").textContent === "착석");
+  const seated = await reader.evaluate(code => {
+    const state = JSON.parse(localStorage.getItem("bookmate-pixel-prototype-v1:" + code));
+    return state.users[state.selected].seat;
+  }, code);
+  assert.equal("chair-" + seated, await focusMark.getAttribute("data-target"));
+  assert.equal(seated, 2);
+  console.log("PASS ten-reader room: a single highlight switched between adjacent chairs; E seated the avatar in the highlighted chair");
   assert.deepEqual(errors, []);
   console.log(
     "PASS: 10 authenticated Chrome contexts sent 400 moves; all 100 final positions matched, 10/10 got chat, zero reconnects; eligible reader received P2P note",

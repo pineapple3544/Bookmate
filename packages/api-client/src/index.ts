@@ -59,11 +59,10 @@ export function createApiClient(
   return {
     health: () => request<HealthResponse>("/health"),
     ready: () => request<ReadyResponse>("/health/ready"),
-    register: (email: string, password: string, nickname: string) =>
+    register: (email: string, password: string, _legacyNickname?: string) =>
       request<{ user: AuthUser }>("/api/v1/auth/register", "POST", {
         email,
         password,
-        nickname,
       }),
     login: (email: string, password: string) =>
       request<{ user: AuthUser }>("/api/v1/auth/login", "POST", {
