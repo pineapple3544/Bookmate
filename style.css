@@ -9,6 +9,11 @@
   --r: 14px; --shadow: 0 1px 2px #3a2b1a10, 0 6px 18px -8px #3a2b1a26;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
+/* Bootstrap reboot이 p/h/ol 여백을 다시 넣기 때문에(* 선택자보다 우선) 한 번 더 초기화합니다.
+   mb-1, mt-2 같은 유틸리티 클래스는 !important라서 그대로 적용됩니다. */
+p, h1, h2, h3, h4, h5, h6, ol, ul { margin-top: 0; margin-bottom: 0; }
+ol, ul { padding-left: 0; }
+h1, h2, h3, h4, h5, h6 { line-height: 1.35; }
 body { background: var(--page); color: var(--ink); font: 14px/1.5 "Noto Sans KR", sans-serif; }
 a { color: inherit; text-decoration: none; }
 .serif { font-family: "Noto Serif KR", serif; }
@@ -35,19 +40,32 @@ a { color: inherit; text-decoration: none; }
 
 /* atoms */
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 16px; box-shadow: var(--shadow); }
-.btn { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; padding: 13px 16px; border: 0; border-radius: 12px; background: var(--ink); color: #fdf8f0; font: 500 14px "Noto Sans KR", sans-serif; cursor: pointer; transition: transform .15s, opacity .15s; }
+/* 색은 --btn-bg/--btn-fg/--btn-border 변수로만 지정합니다.
+   Bootstrap의 .btn:hover/:active 규칙이 배경을 투명하게 덮어쓰지 않도록 --bs-btn-* 변수에도 같은 값을 넣습니다. */
+.btn {
+  --btn-bg: var(--ink); --btn-fg: #fdf8f0; --btn-border: transparent;
+  --bs-btn-bg: var(--btn-bg); --bs-btn-color: var(--btn-fg); --bs-btn-border-color: var(--btn-border);
+  --bs-btn-hover-bg: var(--btn-bg); --bs-btn-hover-color: var(--btn-fg); --bs-btn-hover-border-color: var(--btn-border);
+  --bs-btn-active-bg: var(--btn-bg); --bs-btn-active-color: var(--btn-fg); --bs-btn-active-border-color: var(--btn-border);
+  --bs-btn-disabled-bg: var(--btn-bg); --bs-btn-disabled-color: var(--btn-fg); --bs-btn-disabled-border-color: var(--btn-border);
+  display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; padding: 13px 16px;
+  border: 1px solid var(--btn-border); border-radius: 12px; background: var(--btn-bg); color: var(--btn-fg);
+  font: 500 14px "Noto Sans KR", sans-serif; cursor: pointer; transition: transform .15s, opacity .15s;
+}
 .btn:hover { opacity: .9; } .btn:active { transform: scale(.98); }
-.btn.accent { background: var(--accent); } .btn.ok { background: var(--ok); }
-.btn.line { background: var(--card); color: var(--ink); border: 1px solid var(--line); }
-.btn.ghost { background: transparent; color: var(--muted); }
-.btn.dash { background: var(--card); color: var(--ink); border: 1px dashed #d9cfbf; }
+.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; box-shadow: none; }
+.btn.accent { --btn-bg: var(--accent); } .btn.ok { --btn-bg: var(--ok); }
+.btn.line { --btn-bg: var(--card); --btn-fg: var(--ink); --btn-border: var(--line); }
+.btn.ghost { --btn-bg: transparent; --btn-fg: var(--muted); }
+.btn.dash { --btn-bg: var(--card); --btn-fg: var(--ink); --btn-border: #d9cfbf; border-style: dashed; }
 .field { display: block; font-size: 12px; color: var(--muted); }
 .input { display: block; width: 100%; margin-top: 6px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); font: 14px "Noto Sans KR", sans-serif; color: var(--ink); outline: none; transition: border .15s, box-shadow .15s; }
 .input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px #c2602f22; }
 textarea.input { height: 84px; resize: none; }
 .badge { font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 99px; white-space: nowrap; }
 .b-done { background: var(--ok-soft); color: var(--ok); } .b-read { background: var(--accent-soft); color: var(--accent); } .b-wait { background: var(--soft); color: var(--muted); }
-.row { display: flex; align-items: center; gap: 10px; }
+/* Bootstrap의 .row(그리드: 자식 width:100%, 줄바꿈)와 이름이 겹치지 않도록 .hrow를 씁니다. */
+.hrow { display: flex; align-items: center; gap: 10px; }
 .grow { flex: 1; min-width: 0; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
@@ -276,3 +294,5 @@ textarea.input { height: 84px; resize: none; }
 .bm-canvas-actions{display:flex;gap:8px;margin:8px 0}
 .bm-canvas-actions .btn{padding:9px 10px;font-size:12px}
 @media(max-width:360px){.bm-canvas-actions{flex-direction:column}.bm-comment-action{min-width:28px}}
+.bm-demo-reset{border:0;background:none;padding:0;margin-left:4px;font-size:10px;color:var(--accent);text-decoration:underline;cursor:pointer}
+.menu a[aria-current="page"]{font-weight:700}

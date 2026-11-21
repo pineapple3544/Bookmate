@@ -12,7 +12,7 @@
   // 테스트용 참여자. 실제 연동에서는 방 API가 제공하는 ID/이름/순서로 교체합니다.
   const DEMO_MEMBERS = [
     { id: "nakyeon", name: "낙연" },
-    { id: "soi", name: "소이" },
+    { id: "soi", name: "soiewer" }, // HTML 화면들의 '나' 닉네임과 맞춤
     { id: "minji", name: "민지" },
     { id: "subin", name: "수빈" }
   ];
@@ -51,9 +51,19 @@
     clearTimeout(toast.timeout);
     toast.timeout = setTimeout(() => item.classList.remove("bm-visible"), 3500);
   }
+  // 데모 안내 문구는 페이지당 한 번만 붙이고, 진행 상태를 처음으로 되돌리는 버튼을 함께 둡니다.
   function demoLabel(root) {
-    if (!root || $(".bm-demo-caption", root)) return;
-    root.appendChild(node("p", "1차 데모: 변경 사항은 이 브라우저에만 저장됩니다.", "bm-demo-caption"));
+    if (!root || $(".bm-demo-caption")) return;
+    const caption = node("p", "1차 데모: 변경 사항은 이 브라우저에만 저장됩니다. ", "bm-demo-caption");
+    const reset = node("button", "데모 초기화", "bm-demo-reset");
+    reset.type = "button";
+    reset.addEventListener("click", () => {
+      if (!window.confirm("데모 진행 상태(전달 현황, 감상평, 댓글, 기록, 만든 방)를 처음으로 되돌릴까요?")) return;
+      try { localStorage.removeItem(STORAGE_KEY); } catch { /* 저장소 접근 불가 시 무시 */ }
+      location.reload();
+    });
+    caption.appendChild(reset);
+    root.appendChild(caption);
   }
   function memberById(id) {
     return DEMO_MEMBERS.find(member => member.id === id);
@@ -64,6 +74,30 @@
     if (PAGE === "room-reading.html") return "minji";
     if (PAGE === "room-waiting-view.html") return "subin";
     return "soi";
+  }
+  // 전달 현황에 따라 각 참여자가 봐야 할 화면(완독/읽는 중/대기)을 고릅니다.
+  function viewerPage(id) {
+    const index = DEMO_MEMBERS.findIndex(member => member.id === id);
+    const page = index < state.readerIndex ? "room-done.html"
+      : index === state.readerIndex ? "room-reading.html" : "room-waiting-view.html";
+    return page + "?viewer=" + encodeURIComponent(id);
+  }
+  function viewLabel(id) {
+    return id === "soi" ? "나 (soiewer)" : (memberById(id)?.name || id) + " 시점";
+  }
+  // 상단 '시점' 메뉴를 현재 진행 상태에 맞는 링크로 다시 만듭니다.
+  // (기존에는 고정 링크라서 책을 넘긴 뒤 다음 사람 시점으로 이어 갈 수 없었습니다.)
+  function initViewMenu(viewer) {
+    const view = $("details.view");
+    const summary = $("summary", view || document), menu = $(".menu", view || document);
+    if (!view || !summary || !menu) return;
+    summary.textContent = viewLabel(viewer);
+    menu.replaceChildren(...DEMO_MEMBERS.map(member => {
+      const link = node("a", viewLabel(member.id));
+      link.href = viewerPage(member.id);
+      if (member.id === viewer) link.setAttribute("aria-current", "page");
+      return link;
+    }));
   }
   async function copyValue(value) {
     try {
@@ -86,8 +120,23 @@
     if (PAGE !== "index.html") return;
     const form = $("#signup");
     if (!form) return;
-    $$("input", form).forEach(input => input.required = true);
-    // 로그인/회원가입은 서버 인증이 필요하므로 이 브랜치에서는 구현하지 않습니다.
+    // 로그인 모드에서는 닉네임 칸이 숨겨져 있으므로, 보이는 칸만 required로 둡니다.
+    // (숨은 required 칸이 있으면 브라우저가 제출 자체를 막아 로그인 버튼이 동작하지 않습니다.)
+    const syncRequired = () => {
+      const signupMode = location.hash === "#signup";
+      $$("input", form).forEach(input => {
+        const signupOnly = input.closest(".signup-only");
+        input.required = !signupOnly || signupMode;
+      });
+    };
+    syncRequired();
+    window.addEventListener("hashchange", syncRequired);
+    form.addEventListener("submit", event => {
+      event.preventDefault();
+      if (!form.reportValidity()) return;
+      // 로그인/회원가입은 서버 인증이 필요하므로 이 브랜치에서는 화면 이동만 합니다.
+      location.href = "home.html";
+    });
     demoLabel(form);
   }
 
@@ -102,6 +151,19 @@
       else if (state.createdRoom?.code === code) location.href = "waiting.html?demo=new";
       else toast("등록되지 않은 데모 초대 코드입니다.");
     });
+    // 방 만들기에서 만든 방을 홈 목록 맨 위에 보여 줍니다.
+    const room = state.createdRoom;
+    if (room && inviteForm) {
+      const card = node("a", undefined, "card room d-flex flex-row align-items-center gap-3 text-decoration-none");
+      card.href = "waiting.html?demo=new";
+      const cover = node("div", undefined, "cover flex-shrink-0 " + room.color);
+      cover.append(node("span", room.title), node("span", room.author));
+      const body = node("div", undefined, "flex-grow-1 min-w-0");
+      body.append(node("h2", room.title, "serif fs-6 mb-1 text-dark"),
+                  node("p", "대기실 · " + room.members.length + "/" + room.capacity + "명 모임 · 코드 " + room.code, "xs muted mb-0"));
+      card.append(cover, body);
+      inviteForm.after(card);
+    }
     const roomLink = $('a[href="room-reading.html"]');
     if (roomLink && state.readerIndex !== 2) {
       const count = Math.min(4, state.readerIndex);
@@ -155,7 +217,11 @@
 
   function initWaitingRoom() {
     if (PAGE !== "waiting.html") return;
-    const room = new URLSearchParams(location.search).get("demo") === "new" ? state.createdRoom : null;
+    // ?demo=new 또는 복사한 초대 링크(?code=XXXXXX)로 들어오면 새로 만든 방을 보여 줍니다.
+    const params = new URLSearchParams(location.search);
+    const linkCode = (params.get("code") || "").toUpperCase();
+    const room = state.createdRoom && (params.get("demo") === "new" || linkCode === state.createdRoom.code)
+      ? state.createdRoom : null;
     const code = room?.code || "RAK8FK";
     const codeBlock = $(".code");
     const rows = $(".member")?.parentElement;
@@ -206,7 +272,9 @@
           actions.appendChild(button);
         });
         const name = (memberById(id)?.name || id) + (id === "soi" ? " (나)" : "");
-        row.append(node("span", String(index + 1), "num"), node("span", name, "grow"), actions);
+        row.append(node("span", String(index + 1), "num"), node("span", name, "grow"));
+        if (id === "soi") row.appendChild(node("span", "방장", "badge b-read")); // 기존 왕관 아이콘 대신 표시
+        row.appendChild(actions);
         rows.appendChild(row);
       });
       if (info) info.textContent = "멤버 " + order.length + "/" + (room?.capacity || 3);
@@ -225,7 +293,8 @@
     if (!["room-reading.html", "room-done.html", "room-waiting-view.html"].includes(PAGE)) return;
     const viewer = currentViewerId();
     const activeMember = DEMO_MEMBERS[state.readerIndex];
-    const counter = $(".card .row .xs.muted");
+    initViewMenu(viewer);
+    const counter = $(".card .hrow .xs.muted");
     if (counter) counter.textContent = Math.min(4, state.readerIndex) + "/4 완독";
     $$(".steps li").forEach((li, index) => {
       const person = DEMO_MEMBERS[index];
@@ -246,13 +315,30 @@
         badge.textContent = done ? "완독" : reading ? "읽는 중" : "대기";
       }
     });
+    if (PAGE === "room-waiting-view.html") {
+      // 앞사람이 책을 넘겨 줘서 내 차례가 되면 '대기' 안내 대신 독서 화면으로 가는 버튼을 보여 줍니다.
+      const notice = $(".pad.stack > .card:last-of-type");
+      if (notice && viewer === activeMember?.id) {
+        const go = node("a", "책 받고 읽기 시작하기", "btn accent mt-2");
+        go.href = viewerPage(viewer);
+        notice.replaceChildren(node("p", "내 차례가 됐어요", "fw-medium"),
+                               node("p", "앞사람이 책을 전달했어요. 이제 기록을 남길 수 있어요.", "sm muted"), go);
+      }
+    }
     if (PAGE !== "room-reading.html") return;
     const hold = $(".hold");
     if (viewer !== activeMember?.id) {
+      const finished = state.readerIndex >= DEMO_MEMBERS.length;
+      const go = node("a", finished ? "완료 화면 보기" : "내 화면으로 가기", "btn line mt-3");
+      go.href = finished ? "room-complete.html" : viewerPage(viewer);
       hold?.replaceChildren(
-        node("h3", state.readerIndex >= DEMO_MEMBERS.length ? "교환 독서가 완료됐어요" : "지금은 내 독서 차례가 아니에요"),
-        node("p", "진행 상태를 확인해 주세요. 실제 사용자 판단은 서버 인증 후 처리됩니다.")
+        node("h3", finished ? "교환 독서가 완료됐어요" : "지금은 내 독서 차례가 아니에요"),
+        node("p", "진행 상태를 확인해 주세요. 실제 사용자 판단은 서버 인증 후 처리됩니다."),
+        go
       );
+      // 내 차례가 아니면 기록 올리기·전달 버튼을 쓸 수 없게 숨깁니다.
+      const upload = $("#panel-record details.toggle");
+      if (upload) upload.hidden = true;
     } else {
       const next = DEMO_MEMBERS[state.readerIndex + 1];
       const link = $('a[href="#confirm"]'), question = $("#confirm .box p");
@@ -270,7 +356,7 @@
       event.preventDefault();
       const reader = DEMO_MEMBERS[state.readerIndex];
       if (!reader || reader.id !== currentViewerId()) return toast("현재 독서자만 전달할 수 있습니다.");
-      if (!window.confirm("책 전달을 확정할까요? 이 브라우저의 데모 상태만 변경됩니다.")) return;
+      // 확인은 화면의 #confirm 모달에서 이미 받았으므로 브라우저 confirm 창을 한 번 더 띄우지 않습니다.
       state.readerIndex = Math.min(DEMO_MEMBERS.length, state.readerIndex + 1);
       if (saveState()) location.href = state.readerIndex === DEMO_MEMBERS.length ?
         "room-complete.html" : "room-done.html?viewer=" + encodeURIComponent(reader.id);
@@ -442,11 +528,14 @@
     });
     window.addEventListener("pagehide", () => { if (url) URL.revokeObjectURL(url); });
 
+    const tab = $('.custom-tab-btn[data-target="#panel-record"]');
+    const baseCount = $$(":scope > .card", panel).length; // HTML에 미리 들어 있는 기록 수
     function showRecord(record) {
       const card = node("div", undefined, "card bm-record");
       card.append(node("p", record.page + " · " + record.author + " · 데모 기록", "sm muted"),
                   node("p", record.comment));
       panel.appendChild(card);
+      if (tab) tab.textContent = "기록 " + (baseCount + $$(".bm-record", panel).length);
     }
     state.records.filter(record => record.book === "작별하지 않는다").forEach(showRecord);
     upload.textContent = "기록 임시 저장";

@@ -1,0 +1,4 @@
+# 줄바꿈(LF/CRLF) 차이 때문에 내용이 같은 파일이 '수정됨'으로 뜨지 않도록 통일합니다.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
