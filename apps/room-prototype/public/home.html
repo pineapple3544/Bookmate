@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bookmate · 교환독서</title>
+  <link rel="stylesheet" href="./room.css">
+  <link rel="stylesheet" href="./exchange.css">
+</head>
+<body class="exchange">
+  <header class="topbar">
+    <span class="brand"><span class="brand-mark" aria-hidden="true">📖</span> Bookmate</span>
+  </header>
+  <main class="exchange-main">
+    <p id="exchange-status" role="status"></p>
+    <section id="home-view" hidden>
+      <div class="exchange-heading"><h1>나의 교환독서</h1></div>
+      <form id="code-form" class="exchange-card">
+        <label for="invite-code">초대 코드로 참가</label>
+        <div class="exchange-actions">
+          <input id="invite-code" name="code" required maxlength="8" pattern="[A-Fa-f0-9]{8}" placeholder="초대 코드 8자리">
+          <button class="button secondary">참여 하기</button>
+        </div>
+      </form>
+      <h2>내 독서방</h2>
+      <div id="room-list" class="exchange-list"></div>
+      <div class="exchange-heading"><h2>체험 독서방</h2></div>
+      <div class="sample-rooms">
+        <a class="sample-card" href="/?screen=demo&amp;state=complete"><span class="sample-cover plum" aria-hidden="true">✦</span><span><strong>달빛 서점</strong><small>완독 · 히스토리와 티켓</small></span><span aria-hidden="true">›</span></a>
+        <a class="sample-card" href="/room.html"><span class="sample-cover mint" aria-hidden="true">❋</span><span><strong>픽셀 독서방</strong><small>독서 중 · 자유 체험</small></span><span aria-hidden="true">›</span></a>
+        <a class="sample-card" href="/?screen=demo&amp;state=waiting"><span class="sample-cover rust" aria-hidden="true">✿</span><span><strong>귤빛 오후</strong><small>친구 대기 중 · 초대 링크</small></span><span aria-hidden="true">›</span></a>
+        <a class="sample-card" href="/?screen=demo&amp;state=ready"><span class="sample-cover butter" aria-hidden="true">✦</span><span><strong>햇살 책모임</strong><small>전원 참가 · 시작 대기 중</small></span><span aria-hidden="true">›</span></a>
+      </div>
+    </section>
+    <section id="create-view" hidden>
+      <div class="exchange-heading"><h1>방 만들기</h1></div>
+      <form id="create-form" class="exchange-card">
+        <div class="cover-preview">
+          <div class="exchange-cover preview-book" id="cover-preview" aria-label="책 표지 미리보기">
+            <strong id="cover-title">책 제목</strong><span id="cover-author">저자</span>
+            <span class="cover-ornament" aria-hidden="true">✦</span>
+          </div>
+        </div>
+        <label>책 제목<input name="title" required maxlength="80"></label>
+        <label>저자<input name="author" maxlength="50"></label>
+        <label>참여 인원<select name="capacity"><option value="2">2명</option><option value="3">3명</option><option value="4">4명</option><option value="5">5명</option><option value="6">6명</option><option value="7">7명</option><option value="8">8명</option><option value="9">9명</option><option value="10">10명</option></select></label>
+        <fieldset class="theme-field"><legend>책 표지 색</legend><div id="theme-options"></div></fieldset>
+        <button type="submit" class="button primary">방 만들고 초대하기</button>
+      </form>
+    </section>
+    <section id="waiting-view" hidden>
+      <div id="waiting-book" class="exchange-heading"></div>
+      <div class="exchange-card" id="invite-panel" hidden>
+        <h2>친구 초대</h2>
+        <div class="invite-code-row"><span>초대 코드</span><button id="copy-code" type="button" aria-label="초대 코드 복사"><code id="show-code"></code></button></div>
+        <div class="invite-link-row"><input id="invite-link" aria-label="초대 링크" readonly><button id="copy-invite" type="button" class="button secondary">링크 복사</button></div>
+        <button id="share-invite" type="button" class="button primary">공유하기</button>
+        <p id="invite-status" role="status"></p>
+      </div>
+      <form id="join-form" class="exchange-card" hidden>
+        <button class="button primary">참가하기</button>
+      </form>
+      <div class="exchange-card"><h2 id="waiting-count">참가자</h2><ul id="waiting-members" role="list"></ul><div id="waiting-actions" class="exchange-actions"></div></div>
+      <dialog id="room-settings" aria-labelledby="room-settings-title">
+        <div class="dialog-heading"><h2 id="room-settings-title">방 옵션 수정</h2><button class="button secondary" type="button" data-close>닫기</button></div>
+        <p id="room-settings-status" role="status"></p>
+      </dialog>
+    </section>
+    <section id="history-view" aria-label="교환독서 히스토리" hidden>
+      <div class="history-spread">
+        <div class="history-page history-ticket-page" role="region" aria-label="완료 티켓">
+          <div id="history-book" class="exchange-heading"></div>
+          <h2>완료 티켓</h2>
+          <canvas id="ticket-preview" width="960" height="540" aria-label="완료 티켓 미리보기"></canvas>
+          <button id="ticket-download" class="button primary">티켓 저장 (PNG)</button>
+        </div>
+        <div class="history-page history-reviews-page" role="region" aria-labelledby="history-readers-title">
+          <h2 id="history-readers-title">감상평</h2>
+          <div id="history-list" aria-live="polite"></div>
+          <div class="history-review-nav">
+            <span id="history-position"></span>
+            <button id="history-prev" type="button" aria-label="이전 감상평">◀</button>
+            <button id="history-next" type="button" aria-label="다음 감상평">▶</button>
+          </div>
+        </div>
+        <div class="history-turns" aria-hidden="true"><span></span><span></span><span></span></div>
+      </div>
+    </section>
+    <section id="wardrobe-view" hidden>
+      <div class="exchange-heading"><h1>프로필</h1></div>
+      <form id="profile-form" class="exchange-card">
+        <label>닉네임<input name="nickname" autocomplete="nickname" maxlength="40" required></label>
+        <label>자기소개<textarea name="bio" rows="3" maxlength="300"></textarea></label>
+        <label class="profile-visibility"><input type="checkbox" name="profilePublic"> 같은 방 참가자에게 프로필 공개</label>
+        <div><button type="submit" class="button primary">프로필 저장</button></div>
+        <p id="profile-status" role="status"></p>
+      </form>
+      <h2>내 서재</h2>
+      <div id="profile-books"></div>
+      <h2>캐릭터 꾸미기</h2>
+      <div id="wardrobe-editor" class="wardrobe-editor"></div>
+    </section>
+    <section id="shelf-view" hidden>
+      <div class="exchange-heading"><h1>내 서재</h1></div>
+      <div id="shelf-books" class="bookshelf"></div>
+      <dialog id="shelf-actions" aria-labelledby="shelf-title">
+        <div class="dialog-heading"><h2 id="shelf-title"></h2><button class="button secondary" type="button" data-close>닫기</button></div>
+        <div class="shelf-dialog-actions">
+          <button id="edit-shelf-review" class="button secondary" type="button">감상평 수정</button>
+          <a id="shelf-history" class="button primary">히스토리 보기</a>
+        </div>
+      </dialog>
+      <dialog id="shelf-editor" aria-labelledby="shelf-editor-title">
+        <div class="dialog-heading"><h2 id="shelf-editor-title"></h2><button class="button secondary" type="button" data-close>닫기</button></div>
+        <form id="shelf-review">
+        <label class="rating-label">별점 <span class="rating-picker"><input name="rating" type="range" min="0" max="5" step="0.5" value="0" aria-required="true"></span></label>
+        <label>한줄평 (선택)<textarea name="review" maxlength="160" rows="2"></textarea></label>
+        <label>기억에 남는 문장 (선택)<textarea name="quote" maxlength="160" rows="2"></textarea></label>
+        <button class="button primary">감상 저장</button>
+        <p id="shelf-review-status" role="status"></p>
+        </form>
+      </dialog>
+    </section>
+  </main>
+  <div id="save-toast" role="status" aria-atomic="true"></div>
+  <nav class="bookmate-nav" aria-label="주 메뉴">
+    <a href="/" data-screen="home"><span aria-hidden="true">⌂</span>홈</a>
+    <a href="/?screen=create" data-screen="create"><span aria-hidden="true">＋</span>방 만들기</a>
+    <a href="/?screen=shelf" data-screen="shelf"><span aria-hidden="true">▥</span>내 서재</a>
+    <a href="/?screen=profile" data-screen="profile"><span aria-hidden="true" class="profile-icon"></span>프로필</a>
+  </nav>
+  <script type="module" src="./exchange.js"></script>
+</body>
+</html>

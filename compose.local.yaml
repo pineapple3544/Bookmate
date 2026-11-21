@@ -1,0 +1,16 @@
+name: bookmate-local
+services:
+  web:
+    image: node:24-bookworm-slim
+    working_dir: /app
+    user: "1000:1000"
+    environment:
+      HOST: 0.0.0.0
+      PORT: "5173"
+      EXCHANGE_DATA_FILE: /data/exchanges.json
+    ports:
+      - "127.0.0.1:5173:5173"
+    volumes:
+      - ./apps/room-prototype:/app:ro
+      - ./.local-data:/data
+    command: ["node", "server.js"]

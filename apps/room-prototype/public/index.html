@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>독서방 · Bookmate</title>
+    <link rel="stylesheet" href="./room.css" />
+    <link rel="stylesheet" href="./exchange.css" />
+  </head>
+  <body class="reading-ui">
+    <header class="topbar">
+      <div class="brand">
+        <span class="book-icon" aria-hidden="true"
+          ><svg
+            class="ui-icon"
+            aria-hidden="true"
+            xmlns="http://www.w3.org/2000/svg"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M12 5v16" />
+            <path
+              d="M20.001 19A2 2 0 0022 17V5a2 2 0 00-1.999-2L16 3.002A5 5 0 0012 5a5 5 0 00-4-2H4a2 2 0 00-2 2v12a2 2 0 001.999 2H8a5 5 0 014 2 5 5 0 014-2z"
+            />
+          </svg>
+        </span>
+        Bookmate
+        <span class="version">독서방</span>
+      </div>
+      <div class="top-actions">
+        <span class="local"><i></i> 로컬</span
+        ><button id="settings" class="icon-button" aria-label="설정">
+          <svg
+            class="ui-icon"
+            aria-hidden="true"
+            xmlns="http://www.w3.org/2000/svg"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M14 17H5" />
+            <path d="M19 7h-9" />
+            <circle cx="17" cy="17" r="3" />
+            <circle cx="7" cy="7" r="3" />
+          </svg>
+        </button>
+      </div>
+    </header>
+    <main>
+      <section class="world-panel" aria-label="픽셀 독서방">
+        <div class="room-heading">
+          <div>
+            <span class="eyebrow">독서방 1</span>
+            <h1>픽셀 독서방</h1>
+          </div>
+          <span class="room-count">4명</span>
+        </div>
+        <div class="canvas-wrap">
+          <canvas
+            id="room"
+            width="640"
+            height="400"
+            tabindex="0"
+            aria-label="독서방. 방향키로 이동하고 E 키로 강조된 물체와 상호작용하세요."
+          ></canvas>
+          <button id="customize-avatar" class="wardrobe-hit" type="button" aria-label="캐릭터 꾸미기 앞으로 이동"></button>
+          <div class="room-overlay">
+            <span id="selected-label">소이</span
+            ><span id="action-state">이동 가능</span>
+          </div>
+          <form id="chat-form">
+            <label for="chat-input" id="chat-sender" class="sr-only">소이</label>
+            <div class="chat-compose">
+              <textarea
+                id="chat-input"
+                rows="1"
+                maxlength="500"
+                placeholder="메시지"
+                aria-label="채팅 메시지"
+                required
+              ></textarea
+              ><button id="chat-send" class="button primary" type="submit" aria-label="메시지 보내기">↑</button>
+            </div>
+            <span id="chat-status" role="status"></span>
+          </form>
+          <div id="toast" role="status" aria-live="polite"></div>
+        </div>
+        <div class="world-controls">
+          <button id="movement-toggle" class="button secondary" type="button" aria-controls="movement" aria-expanded="false">방향키</button>
+          <div id="movement" class="movement" role="group" aria-label="이동">
+            <button data-direction="left" aria-label="왼쪽 이동">
+              <svg
+                class="ui-icon"
+                aria-hidden="true"
+                xmlns="http://www.w3.org/2000/svg"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="m12 19-7-7 7-7" />
+                <path d="M19 12H5" />
+              </svg>
+            </button>
+            <button data-direction="up" aria-label="위로 이동">
+              <svg
+                class="ui-icon"
+                aria-hidden="true"
+                xmlns="http://www.w3.org/2000/svg"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="m5 12 7-7 7 7" />
+                <path d="M12 19V5" />
+              </svg>
+            </button>
+            <button data-direction="down" aria-label="아래로 이동">
+              <svg
+                class="ui-icon"
+                aria-hidden="true"
+                xmlns="http://www.w3.org/2000/svg"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M12 5v14" />
+                <path d="m19 12-7 7-7-7" />
+              </svg>
+            </button>
+            <button data-direction="right" aria-label="오른쪽 이동">
+              <svg
+                class="ui-icon"
+                aria-hidden="true"
+                xmlns="http://www.w3.org/2000/svg"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M5 12h14" />
+                <path d="m12 5 7 7-7 7" />
+              </svg>
+            </button>
+          </div>
+          <button id="interact" type="button" class="button secondary" aria-keyshortcuts="E" title="상호작용 (E)" disabled>상호작용<kbd aria-hidden="true">E</kbd></button>
+          <button id="record" type="button" class="button secondary" aria-haspopup="dialog" aria-controls="record-feed" hidden>기록하기</button>
+        </div>
+        <details id="chat-panel" open>
+          <summary>채팅 <span id="chat-unread"></span></summary>
+          <div class="chat-content">
+            <button id="chat-older" class="chat-older" hidden>이전 대화</button>
+            <div
+              id="chat-log"
+              role="log"
+              aria-label="채팅 기록"
+              aria-live="polite"
+              tabindex="0"
+            ></div>
+          </div>
+        </details>
+      </section>
+      <aside class="sidebar">
+        <section class="book-section">
+          <span class="eyebrow">책 정보</span>
+          <div class="book-detail" data-book-id="prototype-book-1" data-cover-color="#d5cfb5" data-cover-art="#657e65">
+            <div class="cover" aria-hidden="true">
+              <span>체험용<br />도서</span>
+              <div class="cover-art"></div>
+              <small>01</small>
+            </div>
+            <div>
+              <h2>체험용 도서</h2>
+              <p class="muted">현재 책 소유자</p>
+              <strong id="holder">소이</strong>
+            </div>
+          </div>
+        </section>
+        <section class="members-section">
+          <div class="section-title">
+            <h2>참가자</h2>
+            <span>선택</span>
+          </div>
+          <div id="members"></div>
+        </section>
+        <button id="complete" class="button primary completion">
+          책 전달하기
+        </button>
+      </aside>
+    </main>
+    <dialog id="record-feed" aria-label="페이지 코멘트">
+      <button type="button" class="icon-button close record-book-close" aria-label="닫기">×</button>
+      <p id="feed-status" role="status"></p>
+      <p id="record-toast" role="status" aria-atomic="true"></p>
+      <div class="record-spread">
+        <div class="record-left-page">
+          <div class="record-publish-row">
+            <button id="record-publish" type="button" class="button primary" aria-haspopup="dialog" aria-controls="record-dialog">게시하기</button>
+          </div>
+          <section id="record-posts" tabindex="0" aria-label="페이지 코멘트 목록"></section>
+        </div>
+        <section id="record-detail" tabindex="-1" aria-label="선택한 게시물의 댓글"></section>
+      </div>
+    </dialog>
+    <dialog id="record-dialog" aria-labelledby="record-title">
+        <div class="dialog-heading">
+          <h2 id="record-title">코멘트 게시하기</h2>
+          <button type="button" class="icon-button close" aria-label="닫기">
+            <svg
+              class="ui-icon"
+              aria-hidden="true"
+              xmlns="http://www.w3.org/2000/svg"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M18 6 6 18" />
+              <path d="m6 6 12 12" />
+            </svg>
+          </button>
+        </div>
+        <label for="page">페이지</label>
+        <div class="record-page-input">
+          <span aria-hidden="true">p.</span>
+          <input id="page" type="number" min="1" max="99999" required />
+        </div>
+        <form id="record-form">
+          <div class="record-upload">
+            <input id="record-photo" type="file" aria-label="코멘트 사진 선택" accept="image/jpeg,image/png,image/webp,image/avif,image/gif,image/bmp" required />
+            <label for="record-photo" class="record-upload-face">
+              <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h4l2-3h6l2 3h4v14H3z"/><circle cx="12" cy="13" r="4"/></svg>
+              <span id="record-photo-name">사진 선택</span>
+            </label>
+          </div>
+          <button type="submit" class="button primary">게시하기</button>
+        </form>
+        <p id="record-status" role="status"></p>
+        <template id="record-reply-template">
+          <form class="record-reply">
+            <div class="reply-compose">
+              <button id="reply-attach" class="button secondary" type="button" aria-label="첨부 옵션" aria-expanded="false" aria-controls="reply-options">＋</button>
+              <input id="reply-photo" type="file" accept="image/jpeg,image/png,image/webp,image/avif,image/gif,image/bmp" hidden />
+              <textarea id="reply-text" maxlength="1000" rows="1" aria-label="댓글" placeholder="댓글을 남겨 보세요"></textarea>
+              <button class="button primary" type="submit" aria-label="댓글 보내기">↑</button>
+            </div>
+            <div id="reply-options" class="reply-options" hidden>
+              <button id="choose-reply-photo" class="button secondary" type="button">사진 추가</button>
+              <button id="toggle-drawing" class="button secondary" type="button" aria-expanded="false" aria-controls="reply-drawing">그림 추가</button>
+            </div>
+            <div id="reply-attachment" class="reply-attachment" hidden>
+              <span id="reply-file-name"></span>
+              <button id="reply-remove-photo" type="button" class="button secondary">첨부 취소</button>
+            </div>
+            <div id="reply-drawing" hidden>
+              <div id="drawing-surface" class="record-photo-stack">
+                <canvas id="drawing" aria-label="원본 사진 위에 그림 그리기"></canvas>
+              </div>
+              <div class="drawing-tools">
+                <label>색깔 <input id="drawing-color" type="color" value="#eb5467" /></label>
+                <button id="undo-drawing" type="button" class="button secondary" aria-label="최근 획 되돌리기" disabled>↶</button>
+                <button id="clear-drawing" type="button" class="button secondary" title="저장 전 그린 모든 획 지우기">전체 지우기</button>
+                <button id="save-drawing" type="button" class="button primary" disabled>그림 저장</button>
+              </div>
+            </div>
+          </form>
+        </template>
+    </dialog>
+    <dialog id="finish-dialog" aria-labelledby="finish-title">
+      <div class="dialog-heading"><h2 id="finish-title">감상평 남기기</h2><button type="button" class="button secondary close">취소</button></div>
+      <form id="finish-form">
+        <label class="rating-label">별점 <span class="rating-picker"><input name="rating" type="range" min="0" max="5" step="0.5" value="0" aria-required="true"></span></label>
+        <label>한줄평 (선택) <textarea name="review" maxlength="160" rows="2"></textarea></label>
+        <label>기억에 남는 문장 (선택) <textarea name="quote" maxlength="160" rows="2"></textarea></label>
+        <p id="finish-status" role="status"></p>
+        <button class="button primary" type="submit">책 전달하기</button>
+      </form>
+    </dialog>
+    <dialog id="peer-profile" aria-labelledby="peer-title">
+      <div class="dialog-heading"><h2 id="peer-title">프로필</h2><button class="button secondary close" type="button">닫기</button></div>
+      <p id="peer-status" role="status"></p>
+      <section id="peer-content" hidden>
+        <div class="peer-intro">
+          <div class="peer-identity">
+            <canvas id="peer-avatar" width="48" height="48" aria-hidden="true"></canvas>
+            <h2 id="peer-name"></h2>
+          </div>
+          <p id="peer-bio"></p>
+        </div>
+        <div class="peer-shelf-heading"><h3>서재</h3><p id="peer-book-detail" aria-live="polite"></p></div>
+        <div id="peer-books" class="bookshelf miniature-shelf"></div>
+        <dl class="peer-reading"><dt>현재 읽는 책</dt><dd id="peer-current-book"></dd></dl>
+      </section>
+    </dialog>
+    <dialog id="avatar-dialog" class="wardrobe-editor" aria-label="캐릭터 꾸미기"></dialog>
+    <dialog id="settings-dialog">
+      <div class="dialog-heading">
+        <h2>설정</h2>
+        <button class="icon-button close" aria-label="닫기">
+          <svg
+            class="ui-icon"
+            aria-hidden="true"
+            xmlns="http://www.w3.org/2000/svg"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M18 6 6 18" />
+            <path d="m6 6 12 12" />
+          </svg>
+        </button>
+      </div>
+      <label class="toggle"
+        ><input id="motion" type="checkbox" /> 애니메이션</label
+      ><button id="reset" class="button secondary">방 상태 초기화</button>
+    </dialog>
+    <nav class="bookmate-nav" aria-label="주 메뉴">
+      <a href="/"><span aria-hidden="true">⌂</span>홈</a>
+      <a href="/?screen=create"><span aria-hidden="true">＋</span>방 만들기</a>
+      <a href="/?screen=shelf"><span aria-hidden="true">▥</span>내 서재</a>
+      <a href="/?screen=profile"><span aria-hidden="true" class="profile-icon"></span>프로필</a>
+    </nav>
+    <script type="module" src="./room.js"></script>
+  </body>
+</html>

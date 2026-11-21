@@ -1,0 +1,11 @@
+.git
+node_modules
+**/node_modules
+**/dist
+.env
+.env.*
+coverage
+
+.local-data
+.bookmate-exchanges.json
+**/.bookmate-exchanges.json
