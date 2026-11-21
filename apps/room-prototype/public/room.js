@@ -80,7 +80,7 @@ if (exchangeCode) {
 }
 const roomSuffix = exchange ? ":" + exchange.code : "";
 const storageKey = "bookmate-pixel-prototype-v1" + roomSuffix;
-const memberName = index => exchange?.members[index]?.name ?? "사용자 " + (index + 1);
+const memberName = index => exchange?.members[index]?.name ?? (index === 0 ? "소이" : "사용자 " + (index + 1));
 const bookDetail = $(".book-detail");
 const currentBook = {
   id: bookDetail.dataset.bookId,

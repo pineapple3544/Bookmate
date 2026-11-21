@@ -29,7 +29,7 @@ export async function myProfile() {
   }
   let saved;
   try { saved = JSON.parse(localStorage.getItem(previewKey)); } catch { /* Use the initial profile. */ }
-  return { nickname: saved?.nickname ?? "사용자 1", bio: saved?.bio ?? "", profilePublic: false, books: [] };
+  return { nickname: saved?.nickname ?? "소이", bio: saved?.bio ?? "", profilePublic: false, books: [] };
 }
 
 export async function saveProfile(profile) {

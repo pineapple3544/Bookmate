@@ -64,7 +64,7 @@ const demoBooks = {
 };
 function demoRoom(state, appearance, profileId) {
   if (!Object.hasOwn(demoBooks, state)) reject("체험 독서방을 찾을 수 없어요.", 404);
-  const host = { ...member("사용자 1", appearance), profileId };
+  const host = { ...member("소이", appearance), profileId };
   const time = days => new Date(Date.now() - days * 86400000).toISOString();
   const room = {
     ...demoBooks[state], code: inviteCode(), capacity: state === "ready" ? 4 : 2, demo: state,
@@ -87,7 +87,7 @@ function demoRoom(state, appearance, profileId) {
   return { room: view(room, host.token), token: host.token };
 }
 function previewProfile(id) {
-  const profile = rooms.profiles?.[id] ?? { nickname: "사용자 1", bio: "", profilePublic: false };
+  const profile = rooms.profiles?.[id] ?? { nickname: "소이", bio: "", profilePublic: false };
   const books = Object.values(rooms).filter(room => room.completedAt && room.members?.some(m => m.profileId === id))
     .sort((a, b) => b.members.find(m => m.profileId === id).finishedAt.localeCompare(a.members.find(m => m.profileId === id).finishedAt))
     .map(({ title, author, theme }) => ({ title, author, theme }));
@@ -107,10 +107,10 @@ function view(room, token) {
       capacity: room.capacity, startedAt: room.startedAt,
     }), me, isHost: me >= 0 && members[me].id === hostId,
     members: members.map(({ token: secret, profileId, ...person }, index) =>
-      me >= 0 ? { ...person, name: (profileId ? rooms.profiles?.[profileId]?.nickname ?? "사용자 1" : person.name), review: room.completedAt || index === me ? person.review : undefined,
+      me >= 0 ? { ...person, name: (profileId ? rooms.profiles?.[profileId]?.nickname ?? "소이" : person.name), review: room.completedAt || index === me ? person.review : undefined,
         quote: room.completedAt || index === me ? person.quote : undefined,
         rating: room.completedAt || index === me ? person.rating : undefined, isHost: person.id === hostId }
-        : { name: (profileId ? rooms.profiles?.[profileId]?.nickname ?? "사용자 1" : person.name), isHost: person.id === hostId }),
+        : { name: (profileId ? rooms.profiles?.[profileId]?.nickname ?? "소이" : person.name), isHost: person.id === hostId }),
   };
 }
 function save(room) {
@@ -182,7 +182,7 @@ export async function exchangeApi(request, response, url) {
     if (!code) {
       if (typeof input.demo === "string") return send(201, demoRoom(input.demo, input.appearance, profileId));
       const options = roomOptions(input);
-      const host = { ...member("사용자 1", input.appearance), profileId };
+      const host = { ...member("소이", input.appearance), profileId };
       const room = { ...options, code: inviteCode(), members: [host], createdAt: new Date().toISOString() };
       save(room);
       return send(201, { room: view(room, host.token), token: host.token });
@@ -194,7 +194,7 @@ export async function exchangeApi(request, response, url) {
     if (action === "join") {
       if (me >= 0) return send(200, { room: view(room, token), token });
       if (room.startedAt || room.members.length >= room.capacity) reject("이미 시작했거나 인원이 찬 방이에요.", 409);
-      const person = { ...member("사용자 1", input.appearance), profileId };
+      const person = { ...member("소이", input.appearance), profileId };
       room.members.push(person);
       save(room);
       return send(201, { room: view(room, person.token), token: person.token });

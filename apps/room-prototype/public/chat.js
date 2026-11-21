@@ -1,7 +1,7 @@
 import { localMode, localRequest } from "./local-transport.js";
 export function createChat({
   transport = null,
-  memberName = slot => "사용자 " + (slot + 1),
+  memberName = slot => (slot === 0 ? "소이" : "사용자 " + (slot + 1)),
   getSelected,
   getUsers,
   viewport,
