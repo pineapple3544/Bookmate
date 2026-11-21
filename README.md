@@ -1,107 +1,163 @@
-# Bookmate
+<div align="center">
 
-교환독서 프로젝트의 픽셀 독서방 시제품과 백엔드·프런트엔드 연동 기반입니다.
+# 📖 Bookmate
 
-## 최신 화면과 서버 통합
+**한 권의 실물 책을 친구들과 차례로 돌려 읽는 교환독서 웹 서비스**
 
-`docker compose up --build` 실행 후 http://localhost:5173 에서 회원가입·로그인할 수 있습니다. 최신 홈·초대·독서방·서재 화면을 PostgreSQL과 연결했고, 실제 계정의 채팅·아바타 이동을 동기화합니다. [통합 가이드와 검증](docs/integration-20261115.md)을 참고하세요.
+픽셀 독서방에 모여 채팅하고, 책에 남긴 흔적을 사진으로 공유하고, 다 읽으면 다음 사람에게 책을 넘겨요.
 
-## 서버 없는 시제품 먼저 실행
+![Node.js 24](https://img.shields.io/badge/Node.js-24-5FA04E?logo=nodedotjs&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
+![Fastify](https://img.shields.io/badge/Fastify-5-000000?logo=fastify&logoColor=white)
+![PostgreSQL 17](https://img.shields.io/badge/PostgreSQL-17-4169E1?logo=postgresql&logoColor=white)
+![Prisma](https://img.shields.io/badge/Prisma-7-2D3748?logo=prisma&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker_Compose-2496ED?logo=docker&logoColor=white)
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow)
 
-Node.js 24에서 `node apps/room-prototype/server.js` 실행 후 http://localhost:5173 에 접속합니다. npm 설치·API·DB·.env 없이 동작합니다. 정적 파일 제공만 필요하며 브라우저의 IndexedDB에 채팅과 페이지별 글·그림을 저장합니다. 같은 브라우저의 여러 탭에서 접속 상태·채팅·아바타 이동을 공유합니다.
+<img src="docs/screenshots/reading-room.png" alt="픽셀 독서방 화면" width="900">
 
-Docker만 사용할 경우 `docker compose -f compose.local.yaml up`으로 웹만 실행합니다. 다른 기기 간 P2P는 아직 구현하지 않았습니다. 상세 기능과 저장 범위는 [시제품 README](apps/room-prototype/README.md)를 참고하세요.
+</div>
 
-아래는 API와 PostgreSQL을 함께 개발할 때의 설정입니다.
+## 소개
 
-## 실제 서버 API
+교환독서는 한 권의 책을 여러 사람이 정해진 순서대로 돌려 읽는 독서 방식이에요. 앞사람이 남긴 밑줄과 메모를 다음 사람이 이어서 보는 재미가 있지만, 지금 책이 누구에게 있는지 정리하거나, 책에 남긴 생각을 함께 나누거나, 다 읽은 뒤 감상을 모아 두기는 쉽지 않아요.
 
-로그인·세션, 방 CRUD·초대·참가 권한, 읽는 순서·완료·책 전달, 영구 채팅, WebSocket 접속·아바타 이동·WebRTC 시그널링을 구현했습니다. [서버 API 연동 가이드](docs/server-api.md)에 전체 경로와 SDK 사용법이 있습니다. `docker compose up --build`로 API·DB·웹을 함께 실행합니다.
+**Bookmate**는 이 과정을 하나의 웹 서비스로 묶었어요.
 
-실시간 Host는 단일 API 인스턴스 기준이며 브라우저 P2P 복제와 암호화 키 관리는 후속 작업입니다. 최신 교환독서 화면은 계정 API와 연결했습니다. `/room.html`의 사용자 번호 선택형 시제품도 별도로 유지합니다.
+- 📚 **방 만들기와 초대**: 함께 읽을 책을 정하고 초대 코드·링크로 친구를 불러요.
+- 🔁 **읽는 순서와 책 전달**: 지금 누가 책을 가지고 있는지 보이고, 다 읽으면 다음 사람에게 넘겨요.
+- 🏠 **픽셀 독서방**: 같은 방 친구들이 캐릭터로 모여 실시간으로 이동하고 채팅해요.
+- 📸 **페이지 기록**: 책에 남긴 페이지를 사진으로 올리고, 사진 위에 그림을 그리거나 댓글을 달아요.
+- 🎫 **완독 기록**: 모두 다 읽으면 감상평 히스토리와 기념 티켓이 만들어지고, 책이 내 서재에 꽂혀요.
 
-## 개발 환경
+## 화면 둘러보기
 
-- WSL Ubuntu의 `/home/nyko2/bookshare-wsl`
-- Docker Engine와 Docker Compose
-- 컨테이너의 Node.js 24, PostgreSQL 17
-- Node를 WSL에 직접 설치하는 경우 Node.js 24 사용
+### 홈 · 방 만들기
 
-## 실행
+| 나의 교환독서 | 방 만들기 |
+| :---: | :---: |
+| <img src="docs/screenshots/home.png" alt="홈 화면" width="420"> | <img src="docs/screenshots/create-room.png" alt="방 만들기 화면" width="420"> |
+| 참여 중인 방과 체험용 독서방을 한눈에 봐요. 초대 코드 8자리로 바로 참가할 수 있어요. | 책 제목·저자·참여 인원(2~10명)·표지 색을 고르면 표지가 바로 미리 보여요. |
 
-WSL 터미널에서 실행합니다.
+### 대기실 · 독서방
+
+| 대기실 | 픽셀 독서방 |
+| :---: | :---: |
+| <img src="docs/screenshots/waiting-room.png" alt="대기실 화면" width="420"> | <img src="docs/screenshots/reading-room.png" alt="독서방 화면" width="420"> |
+| 초대 코드와 링크를 공유하고, 인원이 모이면 방장이 교환독서를 시작해요. | 방향키나 클릭으로 캐릭터를 움직이고, 채팅은 머리 위 말풍선으로도 보여요. 오른쪽에서 현재 책 소유자와 참가자 접속 상태를 확인해요. |
+
+### 페이지 기록 · 캐릭터 꾸미기
+
+| 페이지 기록 | 캐릭터 꾸미기 |
+| :---: | :---: |
+| <img src="docs/screenshots/page-record.png" alt="페이지 기록 화면" width="420"> | <img src="docs/screenshots/wardrobe.png" alt="캐릭터 꾸미기 화면" width="420"> |
+| 페이지 번호와 함께 사진을 올리고 댓글·사진·그림을 덧붙여요. 다른 사람의 기록은 내 차례가 오거나 완독한 뒤에 볼 수 있어요. | 독서방의 옷장에서 머리·피부·옷·신발·액세서리·표정을 바꿔요. 교환독서를 끝내면 책 표지 펫을 얻어 데리고 다닐 수 있어요. |
+
+### 히스토리 · 내 서재
+
+| 히스토리와 완료 티켓 | 내 서재 |
+| :---: | :---: |
+| <img src="docs/screenshots/history-ticket.png" alt="히스토리와 완료 티켓" width="420"> | <img src="docs/screenshots/bookshelf.png" alt="내 서재 화면" width="420"> |
+| 참가자별 별점과 감상평을 넘겨 보고, 완료 티켓을 PNG로 저장해요. | 모두 함께 완독한 책이 책장에 꽂혀요. 책을 누르면 감상평과 히스토리로 이동해요. |
+
+### 모바일
+
+<p align="center"><img src="docs/screenshots/mobile.png" alt="모바일 홈과 독서방" width="560"></p>
+
+휴대폰 화면에서는 책 정보·참가자·채팅을 접고 펼 수 있고, 화면 버튼으로 캐릭터를 움직일 수 있어요.
+
+## 바로 실행해 보기
+
+### 방법 1. 화면만 빠르게 보기 (Node.js만 필요)
+
+DB나 설치 과정 없이 체험 모드로 실행돼요. 데이터는 브라우저와 로컬 JSON 파일에만 저장돼요.
 
 ```bash
-cd /home/nyko2/bookshare-wsl
-cp .env.example .env
+git clone https://github.com/pineapple3544/Bookmate.git
+cd Bookmate
+node apps/room-prototype/server.js
+```
+
+브라우저에서 **http://localhost:5173** 을 열면 돼요. Node.js **24**가 필요해요. 홈의 **체험 독서방** 네 개로 진행 단계별 화면(대기, 독서 중, 완독)을 바로 볼 수 있어요.
+
+### 방법 2. 회원가입·DB까지 전체 실행 (Docker 필요)
+
+[Docker Desktop](https://www.docker.com/products/docker-desktop)을 실행한 상태에서:
+
+```bash
+cp .env.example .env        # Windows PowerShell: copy .env.example .env
 docker compose up --build
-curl http://localhost:3000/health
-curl http://localhost:3000/health/ready
 ```
 
-Compose는 터미널에 연결된 상태로 실행합니다. API 확인 명령은 다른 WSL 터미널에서 실행합니다. WSL 세션이 종료되면 개발 컨테이너도 종료될 수 있으므로 개발 중에는 실행 터미널을 유지합니다. 이미 `.env`가 있으면 내용을 확인해 유지합니다. 예시 비밀번호는 로컬 개발 전용입니다. Compose가 DB 준비 후 마이그레이션을 적용하고 API를 시작합니다. API와 DB 포트는 개발 컴퓨터의 루프백에 바인딩합니다. 포트가 사용 중이면 충돌을 해결하거나 Compose 포트 매핑을 수정합니다.
+**http://localhost:5173** 에서 회원가입 후 로그인하면 돼요. 일반 창과 시크릿 창에서 다른 계정으로 접속하면 채팅과 캐릭터 이동이 실시간으로 맞춰지는 걸 볼 수 있어요. 끌 때는 `Ctrl + C` 후 `docker compose down`을 실행해요. 가입한 계정 같은 데이터는 그대로 남아요.
 
-```bash
-docker compose logs api
-docker compose down
-```
+> 개발 서버 실행, 테스트, 배포 관련 내용은 [개발 가이드](docs/development.md)에 정리돼 있어요.
 
-`down`은 DB 볼륨을 유지합니다. `down -v`는 데이터를 삭제하므로 초기화가 필요한 경우에만 사용합니다.
+## 기술 스택
+
+| 구분 | 사용 기술 |
+| --- | --- |
+| 프론트엔드 | HTML · CSS · Vanilla JavaScript (ES Modules), Canvas 픽셀 렌더링, IndexedDB |
+| 백엔드 | Node.js 24 · TypeScript · Fastify 5 (CORS, Rate Limit, Swagger/OpenAPI, WebSocket) |
+| 데이터베이스 | PostgreSQL 17 · Prisma 7 |
+| 실시간 | WebSocket (접속 상태·캐릭터 이동·WebRTC 시그널링), WebRTC DataChannel (페이지 기록 P2P 공유) |
+| 인프라 | Docker · Docker Compose, GitHub Actions (타입 검사·테스트·브라우저 테스트) |
+| 테스트 | Node.js test runner, Playwright 브라우저 테스트 |
 
 ## 구조
 
-| 경로                 | 역할                                       |
-| -------------------- | ------------------------------------------ |
-| apps/server          | Fastify API 서버와 서버 테스트             |
-| packages/contracts   | 서버와 클라이언트의 공통 응답 타입         |
-| packages/api-client  | UI에서 호출할 브라우저 호환 API 클라이언트 |
-| prisma               | PostgreSQL 모델과 마이그레이션             |
-| docs/integration.md  | 팀 연동 규칙과 현재 제공 API               |
-| docs/backend-plan.md | 구현 순서와 담당 경계                      |
-
-## 검증
-
-```bash
-docker compose run --rm --no-deps api npm run typecheck
-docker compose run --rm --no-deps api npm test
-docker compose run --rm --no-deps api npm run db:validate
+```text
+Bookmate/
+├── apps/
+│   ├── room-prototype/      # 웹 화면 (홈, 대기실, 픽셀 독서방, 서재) + 정적 서버
+│   │   ├── public/          #   화면 HTML·CSS·JS
+│   │   ├── server.js        #   정적 파일 제공, 체험 모드 API, /api 프록시
+│   │   └── test/            #   브라우저·단위 테스트
+│   └── server/              # Fastify API 서버 (인증, 방, 책 전달, 채팅, 실시간)
+│       ├── src/
+│       └── test/
+├── packages/
+│   ├── contracts/           # 서버·클라이언트 공통 응답 타입
+│   └── api-client/          # 브라우저에서 쓰는 API 클라이언트
+├── prisma/                  # DB 스키마와 마이그레이션
+├── docs/                    # 개발 가이드, API 문서, 화면 캡처
+├── compose.yaml             # 웹 + API + DB 전체 실행
+└── compose.local.yaml       # 웹만 실행 (체험 모드)
 ```
 
-이미지에는 빌드 시점 코드가 들어갑니다. 변경 후 먼저 `docker compose build`로 갱신합니다.
+## 주요 설계
 
-WSL에 Node.js 24가 있으면 다음 방식으로 빠르게 개발할 수 있습니다. 저장소 루트에서 실행합니다.
+**인증과 보안**
+- 비밀번호는 scrypt와 사용자별 salt로 해시하고, 세션은 HttpOnly · SameSite=Strict 쿠키로만 주고받아요. 토큰을 JavaScript나 localStorage에 두지 않아요.
+- 변경 요청은 허용된 Origin만 받아서 CSRF를 막고, 가입·로그인에는 별도의 요청 횟수 제한을 걸었어요.
+- 세션·초대 토큰은 원문 대신 SHA-256 해시만 DB에 저장해요.
 
-```bash
-npm ci
-npm run db:generate
-npm run build
-docker compose up -d db
-npm run db:migrate
-npm run dev -w @bookmate/server
-```
+**책 전달의 일관성**
+- 책 소유자 변경, 읽기 시작, 전달 이력 기록은 하나의 트랜잭션으로 처리해요.
+- 방마다 `version`을 두어, 두 사람이 동시에 전달을 시도하면 한쪽은 409로 거절돼요.
+- 전달·채팅 요청에 UUID 재시도 키를 붙여서, 네트워크가 끊겨 다시 보내도 중복으로 기록되지 않아요.
 
-Docker API가 이미 실행 중이면 `docker compose stop api`로 3000번 포트를 비웁니다.
+**기록 공유**
+- 페이지 사진·댓글·그림은 서버에 올리지 않고 WebRTC DataChannel로 참가자 브라우저끼리 직접 주고받아요. 서버는 누가 볼 수 있는지와 기록 목록 같은 메타데이터만 관리해요.
 
-## 구현 상태
+**DB 모델**: `User` · `Session` · `Room` · `RoomMember` · `RoomInvite` · `BookTransfer` · `ChatMessage` · `RecordOperation`
 
-서버 상태 확인, DB 연결 확인, OpenAPI JSON, 공통 오류 응답, 허용 Origin 설정, API 클라이언트와 시제품 채팅·접속 상태 API를 제공합니다. DB에는 사용자·방·참가자·채팅 모델이 있습니다. 기본 UI는 로컬 모드이며 서버 채팅은 `/?mode=server`로 선택합니다.
+API 전체 목록과 사용법은 [서버 API 가이드](docs/server-api.md), P2P 기록 공유 구조는 [P2P 기록 공유](docs/p2p-records.md)를 참고하세요.
 
-인증·방 CRUD·책 전달·WebSocket과 단일 인스턴스 Host 교체를 추가했습니다. 키 발급·브라우저 P2P 데이터 복제·여러 서버 간 Host lease는 후속 항목입니다. UI/UX 작업은 팀 작업물을 연결합니다.
+## 문서
 
-## Git
+| 문서 | 내용 |
+| --- | --- |
+| [개발 가이드](docs/development.md) | 개발 환경, 서버·DB 실행, 검증 명령, 배포 메모 |
+| [서버 API 가이드](docs/server-api.md) | 인증 규칙, HTTP API, WebSocket·WebRTC 시그널링 |
+| [통합 가이드](docs/integration-20261115.md) | 화면과 서버 연동 방식, 검증 기록 |
+| [P2P 기록 공유](docs/p2p-records.md) | 페이지 기록 공유 구조와 TURN 설정 |
+| [시제품 README](apps/room-prototype/README.md) | 픽셀 독서방 기능, 체험·서버 모드 차이 |
 
-원격 저장소는 https://github.com/pineapple3544/Bookmate 입니다.
+## 라이선스
 
-Windows Git 인증으로 최초 복제하고, 이 저장소의 로컬 Git 설정에서 Windows Git Credential Manager를 연결했습니다. WSL에서 기존 인증으로 fetch/push를 사용할 수 있습니다. 토큰은 프로젝트 파일에 저장하지 않습니다. 실제 Linux 서버에서는 그 환경의 Git 인증을 별도로 설정합니다.
+[MIT License](LICENSE)
 
-## 실제 서버 이전
+---
 
-`Dockerfile`로 동일한 앱 이미지를 빌드할 수 있습니다. `compose.yaml`은 로컬 개발 설정입니다. 배포 시 HTTPS/WSS 리버스 프록시, 도메인, 비밀값, 백업·복원 절차, 외부 접근 범위를 설정합니다. 브라우저 P2P를 연결할 때 coturn과 외부망 검증을 추가합니다.
-
-## 픽셀 독서방 시제품
-
-실행 방법과 로컬/서버 모드 차이는 [시제품 README](apps/room-prototype/README.md), 디자인 변경은 [unslop 진단](docs/unslop-review.md)을 참고하세요.
-
-## P2P 기록 공유
-
-실제 계정 방의 사진·댓글·그림 공유를 WebRTC DataChannel로 연결했습니다. 서버는 권한과 기록 메타데이터만 관리합니다. 실행 방식, 복제본의 오프라인 제약 및 인터넷 배포용 TURN 설정은 [P2P 기록 공유](docs/p2p-records.md)를 참고하세요.
+<sub>숭실대학교 웹프로그래밍 수업 팀 프로젝트</sub>
