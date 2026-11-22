@@ -97,6 +97,24 @@ try {
   b.on("websocket", socket => socket.on("framereceived", ({ payload }) => {
     if (socket.url().endsWith("/live") && JSON.parse(payload).type === "move") receivedMoves++;
   }));
+  await b.addInitScript(() => {
+    window.directMoves = 0;
+    function observe(channel) {
+      if (channel.label === "bookmate-motion")
+        channel.addEventListener("message", () => window.directMoves++);
+    }
+    window.RTCPeerConnection = class extends RTCPeerConnection {
+      constructor(...args) {
+        super(...args);
+        this.addEventListener("datachannel", event => observe(event.channel));
+      }
+      createDataChannel(...args) {
+        const channel = super.createDataChannel(...args);
+        observe(channel);
+        return channel;
+      }
+    };
+  });
   await b.goto(base + "/room.html?code=" + code);
   await a.waitForFunction(
     () => document.querySelector(".room-count").textContent === "2명 온라인",
@@ -125,7 +143,7 @@ try {
     position,
   );
   // Measure the observer's rendered coordinates during an actual 208-pixel walk.
-  const beforeWalk = receivedMoves;
+  const beforeWalk = receivedMoves + await b.evaluate(() => window.directMoves);
   await b.evaluate(() => {
     const label = document.querySelector(".avatar-label");
     window.walkPositions = new Set();
@@ -142,7 +160,7 @@ try {
   const rendered = await b.evaluate(() =>
     new Set([...window.walkPositions].map(left => Math.round(parseFloat(left) * 6.4))).size
   );
-  const packets = receivedMoves - beforeWalk;
+  const packets = receivedMoves + await b.evaluate(() => window.directMoves) - beforeWalk;
   console.log("Observer walk:", packets, "move packets,", rendered, "distinct on-screen positions");
   assert.ok(packets > 0 && rendered > packets + 5, "observer should render intermediate positions between packets");
   await finish(a, 4.5, "임시 문구4");
@@ -181,6 +199,16 @@ try {
   assert.equal(await a.locator(".speech-bubble").count(), 0);
   await a.locator("#account-logout").click();
   await a.locator("#account-dialog").waitFor();
+  await a.locator('#account-form [name="email"]').fill(emails[0]);
+  await a.locator('#account-form [name="password"]').fill("integration-password");
+  const login = a.getByRole("button", {name:"로그인",exact:true});
+  await login.hover();
+  assert.ok(await login.evaluate(el => {
+    const style = getComputedStyle(el);
+    return Number(style.opacity) > 0 && style.color !== style.backgroundColor && style.backgroundColor !== "rgba(0, 0, 0, 0)";
+  }), "login button stays visible on hover");
+  await login.click();
+  await a.locator("#account-dialog").waitFor({state:"detached"});
   assert.deepEqual(errors, []);
   assert.deepEqual(legacyCalls, []);
   console.log(

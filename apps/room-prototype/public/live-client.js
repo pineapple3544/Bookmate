@@ -1,5 +1,6 @@
 import { apiRequest } from "./account.js";
-export function createLiveRoom({ room, onPosition, onPresence, onStatus }) {
+import { createMotionPeers } from "./motion-peers.js";
+export function createLiveRoom({ room, onPosition, onPresence, onStatus, onSeat, onSeatConflict }) {
   const subscribers = new Set();
   let snapshot;
   const emit = (data) => {
@@ -14,6 +15,42 @@ export function createLiveRoom({ room, onPosition, onPresence, onStatus }) {
     lastPosition;
   const slot = (id) => indices.get(id);
   const message = (m) => ({ ...m, senderSlot: slot(m.senderId) });
+  const sequences = new Map(), seats = new Map();
+  let sequence = 0, checkpoint = 0, requestedSeat, claimSeq = 0;
+  function send(frame) {
+    if (snapshot && socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(frame));
+  }
+  function position(peerId, data, snap = false) {
+    const endpoint = snapshot?.peers.find(p => p.peerId === peerId);
+    if (!endpoint || endpoint.userId === room.members[room.me].id || !data ||
+        !Number.isSafeInteger(data.seq) || data.seq <= (sequences.get(peerId) ?? 0) ||
+        !Number.isFinite(data.x) || data.x < 24 || data.x > 616 ||
+        !Number.isFinite(data.y) || data.y < 160 || data.y > 376) return;
+    sequences.set(peerId, data.seq);
+    const index = slot(endpoint.userId);
+    if (index !== undefined) onPosition(index, { x: data.x, y: data.y, seat: seats.get(index) ?? null }, snap);
+  }
+  const motion = createMotionPeers({
+    getConfig: () => apiRequest(`/api/v1/rooms/${room.id}/motion-rtc-config`),
+    signal: (targetPeerId, connectionId, payload) => send({ type: "motion-signal", targetPeerId, connectionId, kind: payload.type, payload }),
+    receive: position,
+    recover(id) {
+      if (lastPosition) send({ type: "move", seq: ++sequence, x: lastPosition.x, y: lastPosition.y, targets: [id] });
+    },
+  });
+  function publish(user, final = false) {
+    lastPosition = { x: user.x, y: user.y, seat: user.seat };
+    if (!snapshot) return;
+    const packet = { x: user.x, y: user.y, seq: ++sequence };
+    const encoded = JSON.stringify(packet);
+    const targets = snapshot.peers.filter(p => p.peerId !== snapshot.selfPeerId && !motion.send(p.peerId, encoded)).map(p => p.peerId);
+    const claim = requestedSeat !== user.seat;
+    if (claim || targets.length || final || performance.now() - checkpoint >= 1000) {
+      if (claim) { requestedSeat = user.seat; claimSeq = sequence; }
+      send({ type: "move", ...packet, targets, ...(claim ? {seat: user.seat} : {}) });
+      checkpoint = performance.now();
+    }
+  }
   function connect() {
     if (stopped) return;
     onStatus("연결 중");
@@ -23,8 +60,7 @@ export function createLiveRoom({ room, onPosition, onPresence, onStatus }) {
     socket.onopen = () => {
       delay = 500;
       onStatus("서버");
-      if (lastPosition)
-        socket.send(JSON.stringify({ type: "move", ...lastPosition }));
+
     };
     socket.onmessage = (event) => {
       let data;
@@ -33,21 +69,52 @@ export function createLiveRoom({ room, onPosition, onPresence, onStatus }) {
       } catch {
         return;
       }
-      if (data.type === "presence") snapshot = data;
+      const first = !snapshot;
+      if (data.type === "presence") {
+        snapshot = data;
+        motion.update(data);
+        const ids = new Set(data.peers.map(p => p.peerId));
+        for (const id of sequences.keys()) if (!ids.has(id)) sequences.delete(id);
+      }
       emit(data);
       if (data.type === "presence") {
         const previousOnline = online;
         online = data.onlineUserIds.map(slot).filter((i) => i !== undefined);
         onPresence(online);
-        for (const [id, position] of Object.entries(data.positions)) {
+        for (const index of previousOnline) if (!online.includes(index)) seats.delete(index);
+        for (const [id, value] of Object.entries(data.positions)) {
           const index = slot(id);
-          if (index !== undefined) onPosition(index, position, !previousOnline.includes(index));
+          if (index === undefined || index === room.me) continue;
+          seats.set(index, value.seat);
+          if (value.seq) position(value.fromPeerId, value, !previousOnline.includes(index));
+          else onPosition(index, value, !previousOnline.includes(index));
         }
+        if (first && lastPosition) publish(lastPosition, true);
+      } else if (data.type === "motion-signal") {
+        motion.handle(data);
+      } else if (data.type === "seat") {
+        const index = slot(data.userId);
+        if (index === undefined) return;
+        if (index === room.me && data.fromPeerId === snapshot?.selfPeerId) {
+          if (data.seq !== undefined && data.seq < claimSeq) return;
+          requestedSeat = data.seat;
+          if (lastPosition) lastPosition.seat = data.seat;
+        }
+        seats.set(index, data.seat);
+        onSeat(index, data.seat);
+      } else if (data.type === "error" && data.code === "SEAT_OCCUPIED") {
+        onSeatConflict();
+      } else if (data.type === "move" && data.seq !== undefined) {
+        position(data.fromPeerId, data);
       } else if (data.type === "move" && slot(data.userId) !== undefined)
         onPosition(slot(data.userId), data);
     };
     socket.onclose = (event) => {
       snapshot = undefined;
+      motion.update(null);
+      sequences.clear();
+      seats.clear();
+      requestedSeat = undefined;
       emit({ type: "disconnected" });
       online = [];
       onPresence([]);
@@ -85,11 +152,7 @@ export function createLiveRoom({ room, onPosition, onPresence, onStatus }) {
       );
       return true;
     },
-    publish(user) {
-      lastPosition = { x: user.x, y: user.y, seat: user.seat };
-      if (socket?.readyState === WebSocket.OPEN)
-        socket.send(JSON.stringify({ type: "move", ...lastPosition }));
-    },
+    publish,
     async request(url, options = {}) {
       if (url.endsWith("/presence")) return { onlineSlots: online };
       const query = new URL(url, location.href).search;

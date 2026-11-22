@@ -191,13 +191,13 @@ try {
 if (exchange) state.selected = exchange.me;
 // Render remote samples slightly behind arrival time to absorb normal packet jitter.
 const movementInterval = 100;
-const playbackDelay = 140;
+const playbackDelay = movementInterval + 25;
 const remotePaths = new Map();
 let displayUsers = state.users;
 
 function queuePosition(slot, previous, next, snap = false) {
   const distance = Math.hypot(next.x - previous.x, next.y - previous.y);
-  if (snap || distance > 48) {
+  if (snap || (previous.seat !== next.seat && next.seat !== null) || distance > 48) {
     remotePaths.delete(slot);
     return;
   }
@@ -210,6 +210,7 @@ function queuePosition(slot, previous, next, snap = false) {
   }
   // Keep one sample before playback time, even when a background tab skips frames.
   while (samples.length > 1 && samples[1].time <= now - playbackDelay) samples.shift();
+  if (samples.length >= 16) samples.splice(1, 1);
   samples.push({ x: next.x, y: next.y, seat: next.seat, time: now });
 }
 
@@ -300,8 +301,8 @@ if (channel)
     }
   };
 let lastBroadcast = 0;
-function broadcastUser() {
-  live?.publish(state.users[state.selected]);
+function broadcastUser(final = false) {
+  live?.publish(state.users[state.selected], final);
   channel?.postMessage({
     slot: state.selected,
     user: state.users[state.selected],
@@ -332,7 +333,7 @@ function save() {
         slotPrefix + state.selected,
         JSON.stringify(state.users[state.selected]),
       );
-    broadcastUser();
+    broadcastUser(true);
   } catch {
     toast("저장 실패");
   }
@@ -809,13 +810,16 @@ function moveTo(x, y, seat = null) {
 }
 function finishMovement() {
   walking = false;
+  let requestedSeat = null;
   if (pendingSeat !== null) {
     if (seatOccupied(pendingSeat, state.users[state.selected], state.users)) toast("사용 중");
+    else if (live) requestedSeat = pendingSeat;
     else state.users[state.selected].seat = pendingSeat;
   }
   pendingSeat = null;
   target = null;
   save();
+  if (requestedSeat !== null) live.publish({ ...state.users[state.selected], seat: requestedSeat }, true);
   update();
 }
 function sit(index) {
@@ -827,6 +831,9 @@ function sit(index) {
 }
 function canOpenRecords() {
   return state.selected === state.holder || state.users[state.selected].done;
+}
+function demoReceiptKey() {
+  return "bookmate-reading-start:" + (exchange?.code ?? "free") + ":" + (exchange?.members[exchange.me].id ?? state.selected);
 }
 function update() {
   if (exchange) {
@@ -857,10 +864,14 @@ function update() {
   complete.textContent = "책 전달하기";
   const canReadRecords = canOpenRecords();
   $("#record").hidden = !canReadRecords;
+  $("#handoff-count").textContent = state.users.filter(member => member.done).length + "/" + state.users.length + " 완독";
+  $("#record").textContent = isReading && (!exchange || exchange.demoViewers) && state.selected > 0 && !sessionStorage.getItem(demoReceiptKey())
+    ? "책 받고 읽기 시작하기" : "기록하기";
   if (!canReadRecords && $("#record-dialog").open) $("#record-dialog").close();
   if (!canReadRecords && $("#record-feed").open) $("#record-feed").close();
   records.sync();
   $("#motion").checked = state.motion;
+  $(".members-section .section-title span").textContent = exchange?.demoViewers ? "시점 선택" : exchange ? "" : "선택";
   const members = $("#members");
   members.replaceChildren();
   state.users.forEach((member, index) => {
@@ -888,8 +899,16 @@ function update() {
           ? "착석"
           : "대기";
     button.append(mini, name, status);
-    if (exchange && index !== state.selected) button.disabled = true;
+    const switchDemo = exchange?.demoViewers?.includes(exchange.members[index].id) && index !== state.selected;
+    if (exchange && index !== state.selected) button.disabled = !switchDemo;
+    if (switchDemo) button.setAttribute("aria-label", memberName(index) + " 시점으로 보기");
     button.addEventListener("click", () => {
+      if (switchDemo) {
+        const url = new URL(location.href);
+        url.searchParams.set("viewer", exchange.members[index].id);
+        location.assign(url);
+        return;
+      }
       stopHeldMovement();
       path = [];
       walking = false;
@@ -1122,7 +1141,12 @@ const records = createRecords({
   },
 });
 function openRecords() {
-  if (canOpenRecords()) records.open();
+  if (!canOpenRecords()) return;
+  if ((!exchange || exchange.demoViewers) && state.selected === state.holder && state.selected > 0) {
+    sessionStorage.setItem(demoReceiptKey(), "1");
+    $("#record").textContent = "기록하기";
+  }
+  records.open();
 }
 $("#record").addEventListener("click", openRecords);
 $("#complete").addEventListener("click", () => {
@@ -1286,8 +1310,20 @@ const live = exchange && serverMode ? createLiveRoom({
     // The animation frame already draws coordinates. Only seating changes the sidebar.
     if (seatChanged) update();
   },
+  onSeatConflict: () => toast("사용 중"),
+  onSeat(slot, seat) {
+    if (state.users[slot].seat !== seat) {
+      state.users[slot].seat = seat;
+      if (slot === state.selected) {
+        try { localStorage.setItem(storageKey, JSON.stringify(state)); } catch { /* Session still works. */ }
+      }
+      update();
+    }
+  },
   onPresence(slots) {
     onlineSlots = new Set(slots);
+    for (let i = 0; i < state.users.length; i++)
+      if (i !== state.selected && !onlineSlots.has(i)) state.users[i].seat = null;
     for (const slot of remotePaths.keys()) if (!onlineSlots.has(slot)) remotePaths.delete(slot);
     update();
   },

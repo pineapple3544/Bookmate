@@ -4,7 +4,7 @@ import type { PrismaClient } from "@prisma/client";
 import type { WebSocket } from "ws";
 
 type Session = { userId: string; tokenHash: string; expiresAt: Date };
-type Position = { x: number; y: number; seat: number | null };
+type Position = { x: number; y: number; seat: number | null; seq?: number; fromPeerId?: string };
 type Signal = {
   hostEpoch: string;
   kind: "offer" | "answer" | "ice";
@@ -32,8 +32,9 @@ type RoomState = {
   refreshing: boolean;
   dirty: boolean;
   announce: boolean;
+  memberCount: number;
   positions: Map<string, Position>;
-  moves: Map<string, { sender: Peer; position: Position }>;
+  moves: Map<string, { sender: Peer; position: Position; targets: Set<string> | undefined }>;
   moveTimer?: NodeJS.Timeout;
 };
 
@@ -54,16 +55,23 @@ function send(peer: Peer, value: unknown) {
 
 // A short room-wide tick retains only the last input for each player, including
 // the final seat/stop event. Movement never enters the authorization/host queue.
-function move(state: RoomState, sender: Peer, position: Position) {
-  state.moves.set(sender.uid, { sender, position });
+function move(state: RoomState, sender: Peer, position: Position, targets?: Set<string>) {
+  state.positions.set(sender.uid, position);
+  const pending = state.moves.get(sender.uid);
+  if (pending) {
+    // A route can change in the same tick. Every pending recipient still needs the latest sample.
+    if (!pending.targets) targets = undefined;
+    else if (targets) for (const id of pending.targets) targets.add(id);
+  }
+  state.moves.set(sender.uid, { sender, position, targets });
   if (state.moveTimer) return;
   state.moveTimer = setTimeout(() => {
     delete state.moveTimer;
-    for (const { sender, position } of state.moves.values()) {
+    for (const { sender, position, targets } of state.moves.values()) {
       if (!state.peers.has(sender) || !live(sender)) continue;
-      state.positions.set(sender.uid, position);
       for (const recipient of state.peers)
-        send(recipient, { type: "move", userId: sender.uid, ...position });
+        if (!targets || targets.has(recipient.id))
+          send(recipient, { type: "move", userId: sender.uid, ...position });
     }
     state.moves.clear();
   }, 40);
@@ -156,6 +164,7 @@ export function registerRealtime(
       }),
     ]);
     const sessionsByHash = new Map(sessions.map((s) => [s.tokenHash, s]));
+    state.memberCount = members.length;
     const memberIds = new Set(members.map((m) => m.userId));
     const readers = new Set(
       members.filter((m) => m.readingStatus !== "WAITING").map((m) => m.userId),
@@ -279,6 +288,7 @@ export function registerRealtime(
           refreshing: false,
           dirty: false,
           announce: false,
+          memberCount: 0,
           positions: new Map(),
           moves: new Map(),
         };
@@ -333,7 +343,9 @@ export function registerRealtime(
           /* invalid JSON */
         }
         if (message?.type === "move") {
-          const { x, y, seat = null } = message;
+          const previous = current.positions.get(peer.uid);
+          const { x, y, seq, targets } = message;
+          let seat = message.seat === undefined && seq !== undefined ? previous?.seat ?? null : message.seat ?? null;
           if (
             !Number.isFinite(x) ||
             x < 24 ||
@@ -342,12 +354,35 @@ export function registerRealtime(
             y < 160 ||
             y > 376 ||
             (seat !== null &&
-              (!Number.isInteger(seat) || seat < 0 || seat > 11))
+              (!Number.isInteger(seat) || seat < 0 || seat >= current.memberCount)) ||
+            (seq !== undefined && (!Number.isSafeInteger(seq) || seq < 1)) ||
+            (targets !== undefined && (!Array.isArray(targets) || targets.length > 24 ||
+              targets.some((id: unknown) => typeof id !== "string")))
           ) {
             send(peer, { type: "error", code: "INVALID_POSITION" });
             return;
           }
-          move(current, peer, { x, y, seat });
+          if (seq !== undefined && previous?.fromPeerId === peer.id && (previous.seq ?? 0) >= seq) return;
+          const occupied = seat !== null && [...current.positions].some(([uid, p]) => uid !== peer.uid && p.seat === seat);
+          if (occupied) {
+            send(peer, { type: "error", code: "SEAT_OCCUPIED" });
+            seat = previous?.seat ?? null;
+          }
+          const position = { x, y, seat, fromPeerId: peer.id, ...(seq === undefined ? {} : { seq }) };
+          // Serialize claims in the room event loop before another socket can claim this chair.
+          if (previous?.seat !== seat || occupied || (seq !== undefined && "seat" in message)) {
+            for (const recipient of current.peers)
+              send(recipient, { type: "seat", userId: peer.uid, ...position });
+          }
+          move(current, peer, position, targets === undefined ? undefined : new Set(targets));
+        } else if (message?.type === "motion-signal") {
+          if (!["offer", "answer"].includes(message.kind) || typeof message.payload?.sdp !== "string" ||
+              message.payload.sdp.length > 24000 || typeof message.connectionId !== "string" || message.connectionId.length > 64) return;
+          const recipient = [...current.peers].find(p => p.id === message.targetPeerId && p !== peer && live(p));
+          if (recipient) send(recipient, {
+            type: "motion-signal", fromPeerId: peer.id, kind: message.kind,
+            connectionId: message.connectionId, payload: { type: message.kind, sdp: message.payload.sdp },
+          });
         } else if (message?.type === "signal") {
           if (
             !["offer", "answer", "ice"].includes(message.kind) ||

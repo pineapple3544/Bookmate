@@ -211,12 +211,16 @@ export function registerRecordSync(
       });
     },
   );
-  app.get<{ Params: { roomId: string } }>(
-    base + "/rtc-config",
+  for (const motion of [false, true]) app.get<{ Params: { roomId: string } }>(
+    base + (motion ? "/motion-rtc-config" : "/rtc-config"),
     { schema: { params } },
     async (req, reply) => {
       const uid = await authenticate(req);
-      await access(db, req.params.roomId, uid);
+      if (!motion) await access(db, req.params.roomId, uid);
+      else if (!(await db.roomMember.findUnique({
+        where: { roomId_userId: { roomId: req.params.roomId, userId: uid } },
+        select: { userId: true },
+      }))) fail(403, "NOT_A_MEMBER");
       const iceServers: any[] = [];
       const stun = (process.env.RTC_STUN_URLS ?? "").split(",").filter(Boolean);
       if (stun.length) iceServers.push({ urls: stun });

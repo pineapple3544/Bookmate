@@ -55,6 +55,14 @@ try {
   await page.locator("#ticket-download").click();
   assert.equal(await (await result).failure(), null);
   await page.goto(base + "/?screen=demo&state=ready");
+  await page.locator(".waiting-name").first().waitFor();
+  assert.equal(await page.locator(".waiting-name").first().textContent(), "소이");
+  assert.deepEqual(await page.evaluate(() => {
+    const roster = getComputedStyle(document.querySelector("#waiting-members"));
+    const paragraph = getComputedStyle(document.querySelector("#waiting-book p"));
+    return [roster.paddingInlineStart, roster.marginBlockStart, paragraph.marginBlockStart, paragraph.marginBlockEnd];
+  }), ["0px","0px","0px","0px"]);
+  assert.equal(await page.locator("#invite-status").count(), 1);
   await page
     .getByRole("button", { name: "교환독서 시작", exact: true })
     .click();
@@ -78,6 +86,44 @@ try {
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   );
+  // Read through the four-person demo with one browser and one confirmation per handoff.
+  const bookPanel = page.getByRole("button", {name:"책 정보",exact:true});
+  await bookPanel.click();
+  assert.equal(await page.locator("#handoff-count").textContent(), "0/4 완독");
+  assert.equal(await page.locator(".handoff-progress").evaluate(row => {
+    const [label, value] = [...row.children].map(el => el.getBoundingClientRect());
+    return Math.abs(label.top - value.top) < 1 && value.left >= label.right;
+  }), true);
+  const unauthorized = await page.evaluate(async () => {
+    const { exchangeCode, exchangeRequest } = await import("./exchange-client.js");
+    const room = await exchangeRequest(exchangeCode);
+    const res = await fetch("/api/exchanges/" + exchangeCode, {headers:{"x-bookmate-demo-viewer":room.members[1].id}});
+    return res.status;
+  });
+  assert.equal(unauthorized, 403, "a demo viewpoint needs the owner's room token");
+  const nativeDialogs = [];
+  page.on("dialog", async dialog => { nativeDialogs.push(dialog.message()); await dialog.dismiss(); });
+  await page.getByRole("button", { name: "참가자", exact: true }).click();
+  assert.equal(await page.locator(".member").nth(1).isEnabled(), true, "demo owner can switch to the next reader");
+  for (let i = 0; i < 4; i++) {
+    if (i) {
+      await page.locator(".member").nth(i).click();
+      await page.waitForFunction(i => document.querySelectorAll(".member")[i]?.classList.contains("selected"), i);
+      const start = page.getByRole("button", {name: "책 받고 읽기 시작하기"});
+      await start.click();
+      await page.locator("#record-feed .record-book-close").click();
+      await page.getByRole("button", {name: "참가자", exact:true}).click();
+    }
+    await page.locator("#complete").click();
+    await page.locator('#finish-form [name="rating"]').fill("4");
+    await page.locator('#finish-form [type="submit"]').click();
+    await page.locator("#finish-dialog").waitFor({state:"hidden"});
+    await page.locator("#complete").waitFor({state:"hidden"});
+    assert.equal(await page.locator("#handoff-count").textContent(), (i + 1) + "/4 완독");
+  }
+  assert.equal(await page.locator("#holder").textContent(), "모두 완독");
+  assert.equal(await page.locator("#handoff-count").textContent(), "4/4 완독");
+  assert.deepEqual(nativeDialogs, []);
   await page.goto(base + "/?screen=profile");
   await page.locator("#profile-books").getByText("달빛 서점").waitFor();
   await page.locator("#profile-form [name=nickname]").fill("단풍");
@@ -102,9 +148,18 @@ try {
     if (room.members[0].name !== "단풍") throw new Error("legacy membership nickname mismatch");
     return peerProfile(room, 0);
   }, code);
+  const status = await visitor.evaluate(async code => {
+    const { exchangeRequest, previewHeaders } = await import("./exchange-client.js");
+    const room = await exchangeRequest(code);
+    const response = await fetch("/api/exchanges/" + code, {
+      headers: { ...previewHeaders(code), "x-bookmate-demo-viewer": room.members[0].id },
+    });
+    return response.status;
+  }, code);
+  assert.equal(status, 403, "ordinary room membership does not allow viewpoint switches");
   assert.equal(profile.bio, "그림책을 읽어요.");
-  assert.equal(profile.currentBookTitle, "햇살 책모임");
-  assert.equal(profile.books[0].title, "달빛 서점");
+  assert.equal(profile.currentBookTitle, null);
+  assert.ok(profile.books.some(book => book.title === "달빛 서점"));
   assert.deepEqual(errors, []);
   console.log(
     "PASS standalone without API/DB: local JSON exchange, demo start/history/ticket, room/chat, mobile layout",

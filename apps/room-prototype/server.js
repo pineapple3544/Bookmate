@@ -37,7 +37,7 @@ routes.set("/legacy-notes.js", [
   "text/javascript; charset=utf-8",
 ]);
 routes.set("/records.js", ["records.js", "text/javascript; charset=utf-8"]);
-for(const name of ["record-bridge","record-storage","record-protocol","shared-records","p2p-records"])routes.set("/"+name+".js",[name+".js","text/javascript; charset=utf-8"]);
+for(const name of ["motion-peers","record-bridge","record-storage","record-protocol","shared-records","p2p-records"])routes.set("/"+name+".js",[name+".js","text/javascript; charset=utf-8"]);
 const server = createServer(async (request, response) => {
   const url = new URL(request.url, "http://localhost");
   if (url.pathname === "/runtime-config.json") {

@@ -59,6 +59,8 @@ export async function exchangeRequest(code = "", action = "", body) {
     return data.room??data;
   }
   const headers = previewHeaders(code);
+  const viewer = new URLSearchParams(location.search).get("viewer");
+  if (viewer && code === exchangeCode && location.pathname === "/room.html") headers["x-bookmate-demo-viewer"] = viewer;
   if (body && (!code || action === "join")) {
     const appearance = await getDefaultAppearance();
     if (appearance) body = { ...body, appearance };

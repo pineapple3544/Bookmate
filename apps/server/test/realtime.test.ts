@@ -204,6 +204,26 @@ test(
       assert.equal(chat.json().messages[0].id, message.id);
       assert.ok(clients.every((c) => c.closed === 0 && c.errors.length === 0));
 
+      clients[2].send({ type: "move", x: 112, y: 192, seat: 0 });
+      await until("occupied seat rejected", () => clients[2].errors.includes("SEAT_OCCUPIED"));
+      clients[2].send({ type: "move", x: 114, y: 192, seat: null });
+      await until("seat released", () => clients.every(c => c.moves.get(actors[2].id)?.seat === null));
+      clients[2].send({ type: "move", x: 116, y: 192, seq: 3, targets: [clients[3].presence.selfPeerId] });
+      await until("targeted fallback received", () => clients[3].moves.get(actors[2].id)?.x === 116);
+      assert.equal(clients[4].moves.get(actors[2].id)?.x, 114);
+
+      // Both claims target a genuinely empty seat in the same event-loop turn.
+      clients[3].send({ type: "move", x: 200, y: 190, seat: null });
+      await until("chair three empty", () => clients[0].moves.get(actors[3].id)?.seat === null);
+      const contenders = [2, 3];
+      for (const i of contenders)
+        clients[i].send({ type: "move", x: 268, y: 304, seat: 3, seq: 10 });
+      await until("one winner visible to every observer", () =>
+        clients.every(c => contenders.filter(i => c.moves.get(actors[i].id)?.seat === 3).length === 1) &&
+        contenders.some(i => clients[i].moves.get(actors[i].id)?.seq === 10 &&
+          clients[i].moves.get(actors[i].id)?.seat === null));
+      const winner = contenders.find(i => clients[0].moves.get(actors[i].id)?.seat === 3)!;
+      for (const c of clients) assert.equal(c.moves.get(actors[winner].id)?.seat, 3);
       clients[2].send(signal);
       await until("waiting reader cannot signal a record peer", () =>
         clients[2].errors.includes("RECORDS_LOCKED"),

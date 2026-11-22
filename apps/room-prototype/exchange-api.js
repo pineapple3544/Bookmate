@@ -98,14 +98,19 @@ function previewProfile(id) {
   }).sort((a, b) => b.since.localeCompare(a.since))[0];
   return { ...profile, books, currentBookTitle: current?.title ?? null };
 }
-function view(room, token) {
+function demoViewers(room, token) {
+  const host = room.members.find(m => m.id === (room.hostId ?? room.members[0].id));
+  if (!["ready", "reading", "complete"].includes(room.demo) || !room.startedAt || host?.token !== token) return [];
+  return room.members.filter(m => m === host || !m.profileId).map(m => m.id);
+}
+function view(room, token, viewers = demoViewers(room, token)) {
   const me = room.members.findIndex(person => person.token === token);
   const { members, hostId = members[0].id, ...details } = room;
   return {
     ...(me >= 0 ? details : {
       code: room.code, title: room.title, author: room.author, theme: room.theme,
       capacity: room.capacity, startedAt: room.startedAt,
-    }), me, isHost: me >= 0 && members[me].id === hostId,
+    }), ...(viewers.length ? { demoViewers: viewers } : {}), me, isHost: me >= 0 && members[me].id === hostId,
     members: members.map(({ token: secret, profileId, ...person }, index) =>
       me >= 0 ? { ...person, name: (profileId ? rooms.profiles?.[profileId]?.nickname ?? "소이" : person.name), review: room.completedAt || index === me ? person.review : undefined,
         quote: room.completedAt || index === me ? person.quote : undefined,
@@ -167,6 +172,15 @@ export async function exchangeApi(request, response, url) {
     const match = /^\/api\/exchanges(?:\/([A-F0-9]{8})(?:\/(join|start|finish|review|appearance|settings|order))?)?$/.exec(url.pathname);
     if (!match) reject("방을 찾을 수 없어요.", 404);
     const [, code, action] = match;
+    const viewer = request.headers["x-bookmate-demo-viewer"];
+    const original = code && rooms[code];
+    const viewers = original ? demoViewers(original, token) : [];
+    let actingToken = token;
+    if (viewer !== undefined) {
+      if (!viewers.includes(viewer) || (action && !["finish", "appearance"].includes(action)))
+        reject("이 시점으로 전환할 수 없어요.", 403);
+      actingToken = original.members.find(person => person.id === viewer).token;
+    }
     if (request.method === "GET" && code && !action) {
       if (!rooms[code]) reject("방을 찾을 수 없어요.", 404);
       const room = rooms[code];
@@ -174,7 +188,7 @@ export async function exchangeApi(request, response, url) {
       if (owner && !owner.profileId && profileId) {
         save({ ...room, members: room.members.map(m => m === owner ? { ...m, profileId } : m) });
       }
-      return send(200, view(rooms[code], token));
+      return send(200, view(rooms[code], actingToken, viewers));
     }
     if (request.method !== "POST" || (code && !action)) reject("지원하지 않는 요청이에요.", 405);
     const input = await body(request);
@@ -189,7 +203,7 @@ export async function exchangeApi(request, response, url) {
     }
     if (!rooms[code]) reject("방을 찾을 수 없어요.", 404);
     const room = structuredClone(rooms[code]);
-    const me = room.members.findIndex(person => person.token === token);
+    const me = room.members.findIndex(person => person.token === actingToken);
     const now = new Date().toISOString();
     if (action === "join") {
       if (me >= 0) return send(200, { room: view(room, token), token });
@@ -229,7 +243,7 @@ export async function exchangeApi(request, response, url) {
       room.members[me].appearance = roomAppearance(input);
     } else {
       const person = room.members[me];
-      if (action === "finish" && person.finishedAt) return send(200, view(room, token));
+      if (action === "finish" && person.finishedAt) return send(200, view(room, actingToken, viewers));
       if (action === "finish" && !person.receivedAt) reject("책을 받을 차례가 되면 완독을 기록할 수 있어요.", 409);
       if (action === "review" && !person.finishedAt) reject("완독한 책의 감상을 수정할 수 있어요.", 409);
       const rating = Number(input.rating);
@@ -245,7 +259,7 @@ export async function exchangeApi(request, response, url) {
       }
     }
     save(room);
-    return send(200, view(room, token));
+    return send(200, view(room, actingToken, demoViewers(room, token)));
   } catch (error) {
     if (!error.status) console.error(error);
     return send(error.status ?? 500, { message: error.status ? error.message : "방 데이터를 저장하지 못했어요." });

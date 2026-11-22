@@ -234,6 +234,13 @@ try {
   await selectPage(2);
   await upload();
   await a.locator(".record-open-post").filter({ hasText: "p. 2" }).click();
+  for (const width of [320, 390, 1280]) {
+    await a.setViewportSize({width, height:844});
+    assert.ok(await a.locator("#reply-text").evaluate(el => {
+      const input = el.getBoundingClientRect(), card = el.closest("#record-detail").getBoundingClientRect();
+      return input.width > 0 && input.left >= card.left && input.right <= card.right + 1;
+    }), "comment field fits at " + width);
+  }
   await a.locator("#reply-text").fill("사진 위에 표시했어요.");
   await a.locator("#reply-photo").setInputFiles(file);
   await a.locator("#reply-attach").click();
