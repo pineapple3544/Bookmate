@@ -216,20 +216,20 @@ try {
     });
   }, image);
   await a.locator("#record").click();
-  await a.locator("#text-records").click();
+  await a.locator("#record-publish").click();
   await a.waitForFunction(
-    () => !document.querySelector('#text-record-dialog [name="page"]').disabled,
+    () => !document.querySelector('#page').disabled,
   );
-  await a.locator('#text-record-dialog [name="page"]').fill("3");
-  await a.locator('#text-record-dialog [name="page"]').blur();
+  await a.locator('#page').fill("3");
+  await a.locator('#page').blur();
   await a.waitForFunction(
     () =>
-      document.querySelector('#text-record-dialog [name="text"]').value ===
+      document.querySelector('#record-text').value ===
       "임시 문구7",
   );
-  await a.locator('#text-record-dialog [name="text"]').fill("임시 문구8");
-  await a.locator('#text-record-dialog [type="submit"]').click();
-  await a.locator("#text-record-dialog").waitFor({ state: "hidden" });
+  await a.locator('#record-text').fill("임시 문구8");
+  await a.locator('#record-form [type="submit"]').click();
+  await a.locator("#record-dialog").waitFor({ state: "hidden" });
   await a.locator("#record-publish").click();
   await selectPage(2);
   await upload();
@@ -299,19 +299,19 @@ try {
   });
   assert.equal(surviving[0], undefined);
   assert.equal(surviving[1], "image/png");
-  await a.locator("#text-records").click();
+  await a.locator("#record-publish").click();
   await a.waitForFunction(
-    () => !document.querySelector('#text-record-dialog [name="page"]').disabled,
+    () => !document.querySelector('#page').disabled,
   );
-  await a.locator('#text-record-dialog [name="page"]').fill("3");
-  await a.locator('#text-record-dialog [name="page"]').blur();
+  await a.locator('#page').fill("3");
+  await a.locator('#page').blur();
   await a.waitForFunction(
     () =>
-      document.querySelector('#text-record-dialog [name="text"]').value ===
+      document.querySelector('#record-text').value ===
       "임시 문구8",
   );
-  await a.locator("#text-record-dialog [data-delete]").click();
-  await a.locator("#text-record-dialog").waitFor({ state: "hidden" });
+  await a.locator("#record-delete-note").click();
+  await a.locator("#record-dialog").waitFor({ state: "hidden" });
   const remainingPhoto = await a.evaluate(async () => {
     const { recordRequest } = await import("./records.js");
     const post = await recordRequest("get", [0, 3]);

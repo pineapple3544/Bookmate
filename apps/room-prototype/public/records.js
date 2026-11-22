@@ -79,7 +79,7 @@ function element(tag, text, className) {
 }
 
 export function createRecords({ getSelected, getUsers, canOpen, onSave, memberName }) {
-  attachNotes({getSelected,canOpen,onSave});
+  const notes = attachNotes({getSelected,canOpen});
   const feed = document.querySelector("#record-feed");
   const dialog = document.querySelector("#record-dialog");
   const form = document.querySelector("#record-form");
@@ -113,8 +113,41 @@ export function createRecords({ getSelected, getUsers, canOpen, onSave, memberNa
   let records = [];
   let activeReply;
   let selectedPost;
+  let pendingPost;
+  let sortOrder = "date";
   let editingReply;
   const postKey = record => record.slot + ":" + record.page;
+
+  function sortRecords(items) {
+    return items.sort((a, b) => {
+      const dateOrder = (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "");
+      if (sortOrder === "user") return a.slot - b.slot || dateOrder || a.page - b.page;
+      if (sortOrder === "page") return a.page - b.page || dateOrder || a.slot - b.slot;
+      return dateOrder || a.page - b.page || a.slot - b.slot;
+    });
+  }
+  const sortButton = document.querySelector("#record-sort");
+  const sortOptions = document.querySelector("#record-sort-options");
+  sortButton.onclick = () => {
+    sortOptions.hidden = !sortOptions.hidden;
+    sortButton.setAttribute("aria-expanded", String(!sortOptions.hidden));
+  };
+  for (const button of sortOptions.querySelectorAll("[data-record-sort]")) {
+    button.onclick = () => {
+      if (busy) return;
+      sortOrder = button.dataset.recordSort;
+      for (const option of sortOptions.children) {
+        option.setAttribute("aria-pressed", String(option === button));
+      }
+      sortRecords(records);
+      posts.replaceChildren();
+      for (const record of records) renderPost(record, false);
+      if (!records.length) posts.append(element("p", "아직 게시된 코멘트가 없어요.", "record-hint"));
+      sortOptions.hidden = true;
+      sortButton.setAttribute("aria-expanded", "false");
+      sortButton.focus({ preventScroll: true });
+    };
+  }
 
   function releaseImages() {
     for (const url of urls) URL.revokeObjectURL(url);
@@ -142,13 +175,14 @@ export function createRecords({ getSelected, getUsers, canOpen, onSave, memberNa
     return stack;
   }
   function dirty() {
-    return input.files.length;
+    return input.files.length || notes.dirty();
   }
   function mayLeave() {
     return !busy && (!dirty() || confirm("올리지 않은 내용을 버릴까요?"));
   }
   function setBusy(value) {
     busy = value;
+    form.inert = value;
     page.disabled = value;
     input.disabled = value;
     submit.disabled = value;
@@ -205,7 +239,7 @@ export function createRecords({ getSelected, getUsers, canOpen, onSave, memberNa
         return;
       }
       slot = reader;
-      records = loaded.sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "") || a.page - b.page);
+      records = sortRecords(loaded);
       render();
     } catch {
       if (current === generation) {
@@ -220,7 +254,7 @@ export function createRecords({ getSelected, getUsers, canOpen, onSave, memberNa
   if (channel) channel.onmessage = () => void refresh();
   window.addEventListener("bookmate-records-updated",()=>void refresh());
 
-  function renderPost(record) {
+  function renderPost(record, renderDetails = true) {
     const article = element("article", "", "record-post");
     const selected = postKey(record) === selectedPost;
     const header = element("span", "", "record-post-byline");
@@ -247,17 +281,12 @@ export function createRecords({ getSelected, getUsers, canOpen, onSave, memberNa
     article.append(openPost);
     if (record.photo) {
       openPost.append(photoStack(record));
-      if (selected) renderThread(record);
-    } else if (selected) {
+      if (selected && renderDetails) renderThread(record);
+    } else if (selected && renderDetails) {
       detail.append(element("p", "사진 게시물에 댓글을 남길 수 있어요.", "record-hint"));
     }
-    if (record.text || record.drawing) {
-      const legacy = element("details", "", "record-legacy");
-      legacy.append(element("summary", "이전에 남긴 기록"));
-      if (record.text) legacy.append(element("p", record.text));
-      if (record.drawing) legacy.append(photo(record.drawing, "이전에 남긴 그림"));
-      article.append(legacy);
-    }
+    if (record.text) openPost.append(element("span", record.text, "record-post-text"));
+    if (record.drawing) openPost.append(photo(record.drawing, "p. " + record.page + " 기록 그림"));
     if (record.slot === slot) {
       const remove = element("button", "삭제", "button secondary record-delete");
       remove.type = "button";
@@ -376,6 +405,7 @@ export function createRecords({ getSelected, getUsers, canOpen, onSave, memberNa
     const attachment = composer.querySelector("#reply-photo");
     const attachmentInfo = composer.querySelector("#reply-attachment");
     function showAttachment() {
+      closeDrawing();
       attachmentInfo.hidden = !attachment.files.length;
       composer.querySelector("#reply-file-name").textContent = attachment.files[0]?.name ?? "";
     }
@@ -386,6 +416,8 @@ export function createRecords({ getSelected, getUsers, canOpen, onSave, memberNa
       attachButton.setAttribute("aria-expanded", String(!options.hidden));
     };
     composer.querySelector("#choose-reply-photo").onclick = () => {
+      closeDrawing();
+      showAttachment();
       attachment.click();
       options.hidden = true;
       attachButton.setAttribute("aria-expanded", "false");
@@ -397,6 +429,14 @@ export function createRecords({ getSelected, getUsers, canOpen, onSave, memberNa
     attachment.onchange = showAttachment;
     const toggle = composer.querySelector("#toggle-drawing");
     const drawingPanel = composer.querySelector("#reply-drawing");
+    let drawingRequest = 0;
+    function closeDrawing() {
+      drawingRequest++;
+      drawingPanel.hidden = true;
+      toggle.setAttribute("aria-expanded", "false");
+    }
+    text.addEventListener("focus", closeDrawing);
+    text.addEventListener("click", closeDrawing);
     const canvas = composer.querySelector("#drawing");
     const drawingSurface = composer.querySelector("#drawing-surface");
     const saveDrawing = composer.querySelector("#save-drawing");
@@ -416,15 +456,16 @@ export function createRecords({ getSelected, getUsers, canOpen, onSave, memberNa
     };
     toggle.addEventListener("click", async () => {
       if (!drawingPanel.hidden) {
-        drawingPanel.hidden = true;
-        toggle.setAttribute("aria-expanded", "false");
+        closeDrawing();
         return;
       }
+      const request = ++drawingRequest;
+      attachmentInfo.hidden = true;
       try {
         if (!drawingSurface.querySelector(".record-image")) drawingSurface.prepend(...photoStack(record).children);
         const original = drawingSurface.querySelector(".record-image");
         await original.decode();
-        if (!composer.isConnected) return;
+        if (!composer.isConnected || request !== drawingRequest) return;
         if (!marked) {
           const scale = Math.min(1, 1400 / Math.max(original.naturalWidth, original.naturalHeight));
           canvas.width = Math.max(1, Math.round(original.naturalWidth * scale));
@@ -562,25 +603,65 @@ export function createRecords({ getSelected, getUsers, canOpen, onSave, memberNa
 
   form.addEventListener("submit", async event => {
     event.preventDefault();
-    if (busy || !canOpen() || !page.reportValidity() || !input.files[0]) return;
+    if (busy || !canOpen() || !page.reportValidity() || !notes.ready()) return;
     const number = Number(page.value);
     const author = getSelected();
+    const file = input.files[0];
+    if (!file && !notes.hasContent()) {
+      status.textContent = "글을 입력하거나 그림 또는 사진을 추가해 주세요.";
+      return;
+    }
     setBusy(true);
     try {
-      const image = await readPhoto(input.files[0]);
-      const post = { id: crypto.randomUUID(), slot: author, page: number, photo: image, replies: [], updatedAt: new Date().toISOString() };
-      await recordRequest("publish", { key: [author, number], post });
+      // Validate the attachment before either part of the record is saved.
+      const image = file ? await readPhoto(file) : null;
+      if (image) {
+        pendingPost ??= { id: crypto.randomUUID(), slot: author, page: number,
+          photo: image, replies: [], updatedAt: new Date().toISOString() };
+        const current = await recordRequest("get", [author, number]);
+        if (current?.id !== pendingPost.id) {
+          await recordRequest("publish", { key: [author, number], post: pendingPost });
+        }
+      }
+      if (notes.hasContent() || notes.dirty()) await notes.save();
       input.value = "";
       onSave(number);
       changed();
       dialog.close();
-      feedback.textContent = "코멘트를 게시했어요.";
+      feedback.textContent = "";
+      notify("코멘트를 게시했어요.");
+    } catch (error) {
+      status.textContent = error.message;
+      changed();
+    } finally {
+      setBusy(false);
+    }
+  });
+  document.querySelector("#record-delete-note").onclick = async () => {
+    if (busy || !notes.ready() || !canOpen() || !confirm("이 페이지의 글과 그림을 삭제할까요?")) return;
+    setBusy(true);
+    try {
+      await notes.remove();
+      changed();
+      dialog.close();
     } catch (error) {
       status.textContent = error.message;
     } finally {
       setBusy(false);
     }
-  });
+  };
+  const uploadPanel = document.querySelector("#record-upload");
+  const noteDrawingPanel = document.querySelector("#record-note-drawing");
+  document.querySelector("#choose-record-photo").onclick = () => {
+    noteDrawingPanel.hidden = true;
+    uploadPanel.hidden = false;
+    input.click();
+  };
+  document.querySelector("#choose-record-drawing").onclick = () => {
+    uploadPanel.hidden = true;
+    noteDrawingPanel.hidden = false;
+  };
+  page.addEventListener("change", () => { pendingPost = undefined; });
   input.addEventListener("change", () => {
     fileName.textContent = input.files[0]?.name ?? "사진 선택";
   });
@@ -592,6 +673,9 @@ export function createRecords({ getSelected, getUsers, canOpen, onSave, memberNa
   }, true);
   dialog.addEventListener("close", () => {
     input.value = "";
+    pendingPost = undefined;
+    notes.reset();
+    document.querySelector("#record-upload").hidden = true;
     fileName.textContent = "사진 선택";
   });
   feed.addEventListener("cancel", event => {
@@ -623,6 +707,7 @@ export function createRecords({ getSelected, getUsers, canOpen, onSave, memberNa
     page.value = getUsers()[getSelected()].page;
     status.textContent = "";
     dialog.showModal();
+    void notes.load(Number(page.value));
   });
   return {
     sync() {
