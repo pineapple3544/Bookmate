@@ -720,7 +720,7 @@ textarea {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   color: var(--text);
-  resize: vertical;
+  resize: none;
 }
 .toggle {
   display: flex;
@@ -852,7 +852,6 @@ input[type="checkbox"] {
   min-width: 0;
   background: var(--page);
   min-height: 34px;
-  max-height: 80px;
   padding: 6px 10px;
   resize: none;
   font-size: 14px;
@@ -1460,7 +1459,7 @@ form[hidden] {
   min-height: 30px;
   padding: 4px 8px;
   line-height: 20px;
-  resize: vertical;
+  resize: none;
 }
 #reply-text::placeholder { font-size: 0.875em; }
 .record-reply {
@@ -1502,7 +1501,7 @@ form[hidden] {
   background: var(--raised);
 }
 .record-comment p,
-.record-legacy p {
+.record-post-text {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -1584,3 +1583,23 @@ form[hidden] {
 @media (max-width: 520px), (pointer: coarse) {
   #interact kbd { display: none; }
 }
+
+/* Writing fields grow with content instead of being manually resized. */
+textarea { resize: none; max-height: none; overflow-y: hidden; flex-shrink: 0; }
+.record-attachments { display: flex; }
+
+.record-publish-row { gap: 8px; }
+.record-sort-control { position: relative; }
+#record-sort { width: 32px; height: 32px; min-height: 32px; padding: 4px; }
+#record-sort-options {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 3;
+  width: max-content;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+#record-sort-options:not([hidden]) { display: flex; flex-direction: column; }

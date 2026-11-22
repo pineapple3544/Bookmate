@@ -225,6 +225,19 @@
         <div class="record-left-page">
           <div class="record-publish-row">
             <button id="record-publish" type="button" class="button primary" aria-haspopup="dialog" aria-controls="record-dialog">게시하기</button>
+            <div class="record-sort-control">
+              <button id="record-sort" type="button" class="icon-button" aria-label="정렬" title="정렬" aria-expanded="false" aria-controls="record-sort-options">
+                <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+                  <path d="M5 3v6m0 6v6M12 3v10m0 6v2M19 3v3m0 6v9"/>
+                  <circle cx="5" cy="12" r="3"/><circle cx="12" cy="16" r="3"/><circle cx="19" cy="9" r="3"/>
+                </svg>
+              </button>
+              <div id="record-sort-options" class="reply-options" role="group" aria-label="기록 정렬" hidden>
+                <button type="button" class="button secondary" data-record-sort="user" aria-pressed="false">사용자 별</button>
+                <button type="button" class="button secondary" data-record-sort="date" aria-pressed="true">날짜순</button>
+                <button type="button" class="button secondary" data-record-sort="page" aria-pressed="false">페이지순</button>
+              </div>
+            </div>
           </div>
           <section id="record-posts" tabindex="0" aria-label="페이지 코멘트 목록"></section>
         </div>
@@ -256,16 +269,27 @@
         <label for="page">페이지</label>
         <div class="record-page-input">
           <span aria-hidden="true">p.</span>
-          <input id="page" type="number" min="1" max="99999" required />
+          <input id="page" type="number" min="1" max="99999" form="record-form" required />
         </div>
         <form id="record-form">
-          <div class="record-upload">
-            <input id="record-photo" type="file" aria-label="코멘트 사진 선택" accept="image/jpeg,image/png,image/webp,image/avif,image/gif,image/bmp" required />
+          <label for="record-text">글</label>
+          <textarea id="record-text" name="text" maxlength="2000" rows="4"></textarea>
+          <div class="reply-options record-attachments">
+            <button id="choose-record-photo" class="button secondary" type="button">사진 추가</button>
+            <button id="choose-record-drawing" class="button secondary" type="button">그림 추가</button>
+          </div>
+          <div id="record-upload" class="record-upload" hidden>
+            <input id="record-photo" type="file" aria-label="코멘트 사진 선택" accept="image/jpeg,image/png,image/webp,image/avif,image/gif,image/bmp" />
             <label for="record-photo" class="record-upload-face">
               <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h4l2-3h6l2 3h4v14H3z"/><circle cx="12" cy="13" r="4"/></svg>
               <span id="record-photo-name">사진 선택</span>
             </label>
           </div>
+          <div id="record-note-drawing" hidden>
+            <canvas width="400" height="180" aria-label="게시물 그림"></canvas>
+            <button type="button" data-clear class="button secondary">그림 지우기</button>
+          </div>
+          <button id="record-delete-note" type="button" class="button secondary" hidden>글·그림 삭제</button>
           <button type="submit" class="button primary">게시하기</button>
         </form>
         <p id="record-status" role="status"></p>
@@ -359,5 +383,6 @@
       <a href="/?screen=profile"><span aria-hidden="true" class="profile-icon"></span>프로필</a>
     </nav>
     <script type="module" src="./room.js"></script>
-  </body>
+    <script type="module" src="./textarea.js"></script>
+</body>
 </html>

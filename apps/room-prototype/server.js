@@ -7,6 +7,7 @@ const routes = new Map([
   ["/home.html", ["home.html", "text/html; charset=utf-8"]],
   ["/room.html", ["index.html", "text/html; charset=utf-8"]],
   ["/exchange.js", ["exchange.js", "text/javascript; charset=utf-8"]],
+  ["/textarea.js", ["textarea.js", "text/javascript; charset=utf-8"]],
   ["/profile.js", ["profile.js", "text/javascript; charset=utf-8"]],
   ["/rating.js", ["rating.js", "text/javascript; charset=utf-8"]],
   [
