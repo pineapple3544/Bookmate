@@ -80,8 +80,29 @@ try {
     page.on("pageerror", (err) => errors.push(err.message));
     // Instrument the real room socket. Deterministic coordinates let every observer verify every sender.
     await page.addInitScript(() => {
+      window.motionProbe = { sent: 0, targets: [], direct: new Set() };
+      const create = RTCPeerConnection.prototype.createDataChannel;
+      RTCPeerConnection.prototype.createDataChannel = function(label, options) {
+        if (window.motionProbe.disabled && label === "bookmate-motion") throw Error("forced fallback");
+        return create.call(this, label, options);
+      };
+      const transmit = RTCDataChannel.prototype.send;
+      RTCDataChannel.prototype.send = function(frame) {
+        if (this.label === "bookmate-motion") {
+          if (window.motionProbe.disabled) throw Error("forced fallback");
+          window.motionProbe.sent++;
+          window.motionProbe.direct.add(this);
+        }
+        return transmit.call(this, frame);
+      };
       const NativeWebSocket = window.WebSocket;
       window.WebSocket = class extends NativeWebSocket {
+        send(frame) {
+          const data = JSON.parse(frame);
+          if (data.type === "motion-signal" && window.motionProbe.disabled) return;
+          if (data.type === "move" && data.targets) window.motionProbe.targets = data.targets;
+          return super.send(frame);
+        }
         constructor(...args) {
           super(...args);
           if (!String(args[0]).endsWith("/live")) return;
@@ -92,6 +113,7 @@ try {
           this.addEventListener("close", () => probe.closes++);
           this.addEventListener("message", (e) => {
             const msg = JSON.parse(e.data);
+            if (msg.type === "presence") probe.snapshot = msg;
             if (msg.type === "move")
               probe.positions[msg.userId] = [msg.x, msg.y];
           });
@@ -176,6 +198,13 @@ try {
       );
     }),
   );
+  // A 24px update within walking range should render intermediate frames and then settle.
+  await pages[2].evaluate(() => window.roomProbe.socket.send(JSON.stringify({type:"move", x:193, y:202})));
+  await pages[0].waitForFunction(() => {
+    const x = parseFloat(document.querySelectorAll(".avatar-label")[2].style.left) * 6.4;
+    return x > 170 && x < 192;
+  });
+  await pages[0].waitForFunction(() => Math.abs(parseFloat(document.querySelectorAll(".avatar-label")[2].style.left) * 6.4 - 193) < 0.1);
   await pages[1].locator("#record").click();
   await pages[1]
     .locator("#record-posts")
@@ -211,7 +240,7 @@ try {
       await reader.keyboard.up(key);
     }
   }
-  await canvas.press("e");
+  if (await reader.locator("#action-state").textContent() === "착석") await canvas.press("e");
   await reader.waitForFunction(() => document.querySelector("#action-state").textContent === "이동 가능");
   await holdUntil("ArrowDown", () => parseFloat(document.querySelector(".avatar-label.active").style.top) * 4 + 37 >= 183);
   await holdUntil("ArrowRight", () => parseFloat(document.querySelector(".avatar-label.active").style.left) * 6.4 >= 236);
@@ -230,6 +259,43 @@ try {
   assert.equal("chair-" + seated, await focusMark.getAttribute("data-target"));
   assert.equal(seated, 2);
   console.log("PASS ten-reader room: a single highlight switched between adjacent chairs; E seated the avatar in the highlighted chair");
+  // Start with all 45 peer connections, then disconnect one reader from the mesh mid-walk.
+  const lastPeer = await returning.evaluate(() => window.roomProbe.snapshot.selfPeerId);
+  await pages[1].keyboard.press("Escape");
+  await Promise.all(pages.map(async p => {
+    await p.locator("#room").focus();
+    await p.evaluate(() => {
+      window.motionProbe.direct.clear();
+      window.motionProbe.start = parseFloat(document.querySelector(".avatar-label.active").style.left);
+    });
+    await p.keyboard.down("ArrowLeft");
+  }));
+  try {
+    await Promise.all(pages.map(p => p.waitForFunction(() =>
+      Math.abs(parseFloat(document.querySelector(".avatar-label.active").style.left) - window.motionProbe.start) > 1)));
+    await Promise.all(pages.map(p => p.waitForFunction(() => window.motionProbe.direct.size === 9)));
+    console.log("PASS all ten readers moved over 45 WebRTC links");
+    await returning.evaluate(() => {
+      window.motionProbe.disabled = true;
+      for (const ch of window.motionProbe.direct) ch.close();
+    });
+    await Promise.all(pages.map(p => p.evaluate(() => window.motionProbe.direct.clear())));
+    await returning.waitForFunction(() => window.motionProbe.targets.length === 9);
+    await Promise.all(pages.slice(0, 9).map(p => p.waitForFunction(
+      id => window.motionProbe.direct.size === 8 && window.motionProbe.targets.length === 1 && window.motionProbe.targets[0] === id, lastPeer,
+      { timeout: 8000 }
+    )));
+  } finally {
+    await Promise.all(pages.map(p => p.keyboard.up("ArrowLeft")));
+  }
+  const finalPositions = await Promise.all(pages.map(p => p.locator(".avatar-label.active").evaluate(el =>
+    [parseFloat(el.style.left), parseFloat(el.style.top)])));
+  await Promise.all(pages.map(p => p.waitForFunction(expected =>
+    [...document.querySelectorAll(".avatar-label")].every((el,i) =>
+      Math.abs(parseFloat(el.style.left) - expected[i][0]) < 0.02 &&
+      Math.abs(parseFloat(el.style.top) - expected[i][1]) < 0.02), finalPositions)));
+  await checkPresence(pages, -1);
+  console.log("PASS mixed WebRTC/WebSocket: ten keyboard stops converge on all ten screens");
   assert.deepEqual(errors, []);
   console.log(
     "PASS: 10 authenticated Chrome contexts sent 400 moves; all 100 final positions matched, 10/10 got chat, zero reconnects; eligible reader received P2P note",
