@@ -338,8 +338,13 @@ function ticket(room) {
   ctx.beginPath();
   ctx.roundRect(59, 53, 166, 216, [5, 16, 16, 5]);
   ctx.fill();
-  ctx.fillStyle = "#0003";
-  ctx.fillRect(59, 53, 12, 216);
+  ctx.fillStyle = "#0000004d";
+  ctx.fillRect(59, 53, 10, 216);
+  ctx.fillStyle = "#ffffff26";
+  ctx.fillRect(69, 53, 3, 216);
+  ctx.fillStyle = "#d9bf86";
+  ctx.fillRect(84, 70, 126, 2);
+  ctx.fillRect(84, 250, 126, 2);
   function lines(value, width, size, family) {
     ctx.font = size + "px " + family;
     const rows = [];
@@ -360,8 +365,8 @@ function ticket(room) {
       ctx.fillText(row + (i === limit - 1 && rows.length > limit ? "…" : ""), x, y + i * size * 1.3, width);
     }
   }
-  text(room.title, 81, 108, 21, 126, 4, "#3c2921", "serif");
-  text("✦", 124, 241, 35, 70, 1, "#3c2921");
+  text(room.title, 84, 108, 21, 122, 4, "#f3e7cf", "serif");
+  text(room.author, 84, 236, 14, 122, 1, "#d9bf86", "serif");
   text("EXCHANGE READING", 266, 88, 23, 600, 1, muted);
   text(room.title, 266, 149, 43, 628, 2, ink, "serif");
   text(room.author, 266, 245, 25, 620, 1, muted);
@@ -455,7 +460,7 @@ async function shelf() {
 }
 
 function setupRoomOptions(create) {
-  const names = { mint: "세이지", plum: "라벤더", rust: "살구", blue: "하늘", butter: "버터", rose: "장미", cocoa: "코코아" };
+  const names = { mint: "숲", plum: "와인", rust: "벽돌", blue: "남색", butter: "황토", rose: "로즈", cocoa: "가죽" };
   for (const [theme, color] of Object.entries(themes)) {
     const label = node("label", "", "theme-option");
     const radio = node("input");

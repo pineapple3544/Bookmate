@@ -125,7 +125,7 @@ try {
   assert.equal(await page.locator("#handoff-count").textContent(), "4/4 완독");
   assert.deepEqual(nativeDialogs, []);
   await page.goto(base + "/?screen=profile");
-  await page.locator("#profile-books").getByText("달빛 서점").waitFor();
+  await page.locator("#profile-books").getByText("데미안").waitFor();
   await page.locator("#profile-form [name=nickname]").fill("단풍");
   await page.getByLabel("자기소개").fill("그림책을 읽어요.");
   await page.getByLabel("같은 방 참가자에게 프로필 공개").check();
@@ -159,7 +159,7 @@ try {
   assert.equal(status, 403, "ordinary room membership does not allow viewpoint switches");
   assert.equal(profile.bio, "그림책을 읽어요.");
   assert.equal(profile.currentBookTitle, null);
-  assert.ok(profile.books.some(book => book.title === "달빛 서점"));
+  assert.ok(profile.books.some(book => book.title === "데미안"));
   assert.deepEqual(errors, []);
   console.log(
     "PASS standalone without API/DB: local JSON exchange, demo start/history/ticket, room/chat, mobile layout",

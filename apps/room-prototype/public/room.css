@@ -313,35 +313,50 @@ canvas {
   font-size: 14px;
   font-weight: 500;
 }
+/* 책 정보 표지: 홈 화면 표지와 같은 양장본 모양 (책등 그림자, 종이 단면, 금박 선) */
 .cover {
   flex-shrink: 0;
   position: relative;
   width: 80px;
-  height: 120px;
-  padding: 12px 8px;
+  height: 116px;
+  padding: 16px 8px 12px 14px;
   overflow: hidden;
-  background: #d5cfb5;
-  border-left: 4px solid #b8b194;
-  color: #304b42;
+  border-radius: 2px 5px 5px 2px;
+  background-color: #3d5a48;
+  background-image:
+    linear-gradient(90deg, #00000059 0, #0000001f 6px, #ffffff2e 7px, #ffffff00 10px, #ffffff00 88%, #00000024 100%),
+    linear-gradient(180deg, #ffffff12, #00000021);
+  color: #f3e7cf;
+  font-family: "Noto Serif KR", "Nanum Myeongjo", "AppleMyungjo", "Batang", serif;
+  box-shadow: 1px 1px 0 #f6eedc, 2px 2px 0 #d6c8ab, 3px 3px 0 #f6eedc, 5px 6px 8px #3a241a40;
+}
+.cover::before {
+  content: ""; position: absolute; top: 8px; left: 14px; right: 7px; height: 1px; background: #d9bf86; opacity: .85;
 }
 .cover span {
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 500;
+  font-size: 15px;
+  line-height: 21px;
+  font-weight: 700;
 }
 .cover small {
   position: absolute;
   bottom: 8px;
-  right: 8px;
-  font-size: 12px;
+  left: 14px;
+  right: 6px;
+  color: #d9bf86;
+  font-size: 10px;
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .cover-art {
   position: absolute;
   width: 80px;
   height: 24px;
-  bottom: 24px;
-  left: 0;
-  background: #657e65;
+  bottom: 22px;
+  left: 6px;
+  background: #00000033;
   clip-path: polygon(
     0 70%,
     20% 70%,

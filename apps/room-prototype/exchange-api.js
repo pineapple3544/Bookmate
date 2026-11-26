@@ -57,10 +57,10 @@ function inviteCode() {
   return code;
 }
 const demoBooks = {
-  complete: { title: "달빛 서점", author: "체험용 도서", theme: "plum" },
-  reading: { title: "숲속 우체국", author: "체험용 도서", theme: "mint" },
-  waiting: { title: "귤빛 오후", author: "체험용 도서", theme: "rust" },
-  ready: { title: "햇살 책모임", author: "체험용 도서", theme: "butter" },
+  complete: { title: "데미안", author: "헤르만 헤세", theme: "plum" },
+  reading: { title: "작은 아씨들", author: "루이자 메이 올컷", theme: "cocoa" },
+  waiting: { title: "노인과 바다", author: "어니스트 헤밍웨이", theme: "rust" },
+  ready: { title: "위대한 개츠비", author: "F. 스콧 피츠제럴드", theme: "blue" },
 };
 function demoRoom(state, appearance, profileId) {
   if (!Object.hasOwn(demoBooks, state)) reject("체험 독서방을 찾을 수 없어요.", 404);
@@ -79,8 +79,8 @@ function demoRoom(state, appearance, profileId) {
     if (state === "complete") {
       host.finishedAt = friend.receivedAt = time(3);
       friend.finishedAt = room.completedAt = time(1);
-      Object.assign(host, { rating: 5, review: "책을 덮고 나서도 달빛 아래 서점이 떠올랐어요.", quote: "어떤 문장은 밤이 깊어야 읽힌다." });
-      Object.assign(friend, { rating: 4, review: "서로 다른 마음이 한 권의 책에 모이는 이야기가 좋았어요." });
+      Object.assign(host, { rating: 5, review: "알을 깨고 나오는 장면에서 한참 멈춰 있었어요.", quote: "새는 알에서 나오려고 투쟁한다." });
+      Object.assign(friend, { rating: 4, review: "앞사람 밑줄 덕분에 싱클레어의 마음을 한 번 더 따라가 봤어요." });
     }
   }
   save(room);

@@ -1,9 +1,10 @@
 import { serverMode, serverAvailable, ensureAccount, apiRequest } from "./account.js";
 export const exchangeCode = new URLSearchParams(location.search).get("code")?.toUpperCase() ?? "";
 const key = code => "bookmate-exchange:" + code;
+// 책 표지 색. 키(mint, plum …)는 서버가 검증하는 값이라 그대로 두고, 색만 양장본 천 표지 톤으로 맞춥니다.
 export const themes = {
-  mint: "#9db795", plum: "#c5b1d5", rust: "#e4a185", blue: "#a1bed4",
-  butter: "#eac779", rose: "#e4a9b1", cocoa: "#ba947e",
+  mint: "#3d5a48", plum: "#6b2f3c", rust: "#87452f", blue: "#2c4262",
+  butter: "#8f6f34", rose: "#86505b", cocoa: "#56402f",
 };
 export const exchangeUrl = (code, screen = "waiting") => "/?code=" + encodeURIComponent(code) + "&screen=" + screen + (!serverMode && new URLSearchParams(location.search).has("local") ? "&local=1" : "");
 

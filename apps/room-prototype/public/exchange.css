@@ -265,14 +265,19 @@ body.reading-ui {
   padding: 13px 3px;
   border: 1px solid #51362155;
   border-radius: 4px 4px 2px 2px;
-  color: #39291f;
-  background: linear-gradient(90deg, #fff4, transparent 22%, transparent 76%, #43292152), var(--spine);
-  box-shadow: inset 0 7px #fff3, inset 0 -9px #50342139, 2px 1px 3px #3c231e55;
+  color: #f3e7cf;
+  background:
+    linear-gradient(180deg, transparent 12px, #d9bf86 12px, #d9bf86 14px, transparent 14px, transparent 18px, #d9bf86 18px, #d9bf86 19px, transparent 19px,
+      transparent calc(100% - 19px), #d9bf86 calc(100% - 19px), #d9bf86 calc(100% - 18px), transparent calc(100% - 18px),
+      transparent calc(100% - 14px), #d9bf86 calc(100% - 14px), #d9bf86 calc(100% - 12px), transparent calc(100% - 12px)),
+    linear-gradient(90deg, #ffffff26, transparent 22%, transparent 76%, #0000004d), var(--spine);
+  box-shadow: inset 0 3px #ffffff1f, 2px 1px 3px #3c231e55;
 }
 .shelf-book span {
   writing-mode: vertical-rl; text-orientation: mixed;
   max-height: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  font-size: 13px; font-weight: 800;
+  font-family: "Noto Serif KR", "Nanum Myeongjo", "AppleMyungjo", "Batang", serif;
+  font-size: 13px; font-weight: 700;
 }
 .shelf-book:hover { transform: translateY(-4px); }
 .shelf-dialog-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
@@ -338,12 +343,25 @@ body.reading-ui {
 }
 .reader-stars .rating-stars { font-size: 23px; line-height: 28px; }
 .history-reader blockquote { margin: 0; padding-left: 10px; border-left: 2px solid #c6a483; }
+/* 책 표지: 천 양장본처럼 책등 접힘 그림자, 오른쪽·아래로 보이는 종이 단면, 금박 선을 그립니다.
+   색은 인라인 background-color(테마)로 받고, 질감은 background-image로 겹칩니다. */
 .exchange-cover, .sample-cover {
-  display: grid; place-items: center; flex-shrink: 0; width: 64px; height: 84px; padding: 8px;
-  border-left: 5px solid #51362144; color: #3c2921; border-radius: 6px 12px 12px 6px;
-  font-size: 12px; text-align: center; word-break: keep-all; overflow-wrap: anywhere;
-  box-shadow: 3px 4px 0 #d4b9986b;
+  position: relative; display: grid; place-items: center; flex-shrink: 0; width: 64px; height: 88px;
+  padding: 12px 6px 12px 13px; border: 0; border-radius: 2px 5px 5px 2px;
+  color: #f3e7cf; background-color: #3d5a48;
+  background-image:
+    linear-gradient(90deg, #00000059 0, #0000001f 6px, #ffffff2e 7px, #ffffff00 10px, #ffffff00 88%, #00000024 100%),
+    linear-gradient(180deg, #ffffff12, #00000021);
+  font-family: "Noto Serif KR", "Nanum Myeongjo", "AppleMyungjo", "Batang", serif;
+  font-size: 11px; font-weight: 700; line-height: 1.35; letter-spacing: -.01em;
+  text-align: center; word-break: keep-all; overflow-wrap: anywhere;
+  box-shadow: 1px 1px 0 #f6eedc, 2px 2px 0 #d6c8ab, 3px 3px 0 #f6eedc, 4px 4px 0 #cbbb9b, 5px 7px 9px #3a241a47;
 }
+.exchange-cover::before, .exchange-cover::after, .sample-cover::before, .sample-cover::after {
+  content: ""; position: absolute; left: 13px; right: 6px; height: 1px; background: #d9bf86; opacity: .85;
+}
+.exchange-cover::before, .sample-cover::before { top: 7px; }
+.exchange-cover::after, .sample-cover::after { bottom: 7px; }
 .exchange-book { display: flex; align-items: center; gap: 14px; min-width: 0; }
 .exchange-book > div { min-width: 0; overflow-wrap: anywhere; }
 #finish-status { color: var(--mint); }
@@ -359,13 +377,14 @@ body.exchange .button.secondary, body.reading-ui .button.secondary {
 body.exchange .button.secondary:hover, body.reading-ui .button.secondary:hover { background: #f3e2c5; }
 .cover-preview { display: grid; place-items: center; padding: 24px; border-radius: 16px; background: #e9edda; }
 .preview-book {
-  width: 118px; height: 156px; grid-template-rows: auto auto 1fr; gap: 6px;
-  padding: 18px 10px 10px; box-shadow: 5px 6px 0 #94785752;
+  width: 120px; height: 166px; grid-template-rows: 1fr auto; gap: 6px;
+  padding: 26px 12px 26px 20px;
 }
+.preview-book::before { top: 12px; left: 20px; right: 10px; }
+.preview-book::after { bottom: 12px; left: 20px; right: 10px; }
 .preview-book strong, #cover-author { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
-.preview-book strong { font-size: 16px; -webkit-line-clamp: 3; }
-#cover-author { -webkit-line-clamp: 1; }
-.cover-ornament { font-size: 27px; opacity: .62; }
+.preview-book strong { align-self: center; font-size: 17px; -webkit-line-clamp: 3; }
+#cover-author { -webkit-line-clamp: 1; color: #d9bf86; font-size: 11px; font-weight: 500; }
 .theme-field { border: 0; margin: 0; padding: 0; min-width: 0; }
 .theme-field legend { margin-bottom: 8px; font-size: 13px; font-weight: 800; color: var(--secondary); }
 #theme-options { display: flex; flex-wrap: wrap; gap: 4px; }
@@ -389,11 +408,13 @@ body.exchange .button.secondary:hover, body.reading-ui .button.secondary:hover {
   text-decoration: none; color: var(--text); min-width: 0;
 }
 .sample-card:hover { background: #fff2db; }
-.sample-cover { width: 36px; height: 49px; font-size: 20px; }
-.sample-cover.plum { background: #c5b1d5; }
-.sample-cover.mint { background: #9db795; }
-.sample-cover.rust { background: #e4a185; }
-.sample-cover.butter { background: #eac779; }
+.sample-cover { width: 36px; height: 50px; padding: 0; }
+.sample-cover::before, .sample-cover::after { left: 9px; right: 4px; }
+.sample-cover::before { top: 6px; } .sample-cover::after { bottom: 6px; }
+.sample-cover.plum { background-color: #6b2f3c; }
+.sample-cover.mint { background-color: #3d5a48; }
+.sample-cover.rust { background-color: #87452f; }
+.sample-cover.blue { background-color: #2c4262; }
 .sample-card small { display: block; color: var(--muted); font-size: 11px; line-height: 1.4; }
 .sample-card strong { font-size: 13px; }
 .reading-ui .sidebar { min-height: 0; border-color: #ddc6a7; }

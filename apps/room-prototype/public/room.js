@@ -93,7 +93,8 @@ if (exchange) {
   $(".room-heading h1").textContent = exchange.title;
   bookDetail.querySelector("h2").textContent = exchange.title;
   bookDetail.querySelector(".cover span").textContent = exchange.title;
-  bookDetail.querySelector(".cover").style.background = currentBook.color;
+  bookDetail.querySelector(".cover small").textContent = exchange.author;
+  bookDetail.querySelector(".cover").style.backgroundColor = currentBook.color; // background-image(질감)는 유지
 }
 const petCollectionKey = petCollectionKeyFor(serverMode && account?.id);
 let pets = loadPets(petCollectionKey);
