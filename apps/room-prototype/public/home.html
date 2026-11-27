@@ -24,6 +24,16 @@
       </form>
       <h2>내 독서방</h2>
       <div id="room-list" class="exchange-list"></div>
+      <dialog id="room-delete" aria-labelledby="room-delete-title" aria-describedby="room-delete-question">
+        <h2 id="room-delete-title">독서방 삭제</h2>
+        <p id="room-delete-name" dir="auto"></p>
+        <p id="room-delete-question"></p>
+        <p id="room-delete-status" role="status"></p>
+        <div class="exchange-actions">
+          <button class="button secondary" type="button" id="room-delete-cancel" autofocus>취소</button>
+          <button class="button primary" type="button" id="room-delete-confirm">삭제</button>
+        </div>
+      </dialog>
       <section id="public-rooms" aria-labelledby="public-title" hidden>
         <h2 id="public-title">공개방</h2>
         <div id="public-list" class="exchange-list"></div>

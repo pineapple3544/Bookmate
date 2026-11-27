@@ -1,3 +1,4 @@
+import { bindRoomDeletion } from "./room-card-actions.js";
 import { onlineSlots } from "./local-transport.js";
 import { coverEditor, showCover } from "./cover-editor.js";
 import { serverMode, serverAvailable, localExchangeAvailable, ensureAccount, account, apiRequest } from "./account.js";
@@ -90,7 +91,7 @@ function onlineLabel(count) {
   if (!label.hidden) label.textContent = count + "명 온라인";
   return label;
 }
-function publicRooms() {
+function publicRooms(markCompleted) {
   const list = $("#public-list"), feedback = $("#public-status");
   $("#public-rooms").hidden = false;
   let loading = false, joining = false, rendered;
@@ -98,9 +99,10 @@ function publicRooms() {
     if (loading || joining || document.hidden) return;
     loading = true;
     try {
-      const [{ rooms }, { online }] = await Promise.all([
+      const [{ rooms }, { online, completed = [] }] = await Promise.all([
         apiRequest("/api/v1/exchanges/public"), apiRequest("/api/v1/exchanges/online"),
       ]);
+      for (const code of completed) markCompleted(code);
       for (const label of document.querySelectorAll("#room-list [data-room-online]")) {
         label.textContent = (online[label.dataset.roomOnline] ?? 0) + "명 온라인";
         label.hidden = false;
@@ -159,20 +161,47 @@ async function home() {
   const rooms = results.flatMap(result => result.status === "fulfilled" && result.value.me >= 0 && !result.value.demo ? [result.value] : []);
   if (results.some(result => result.status === "rejected")) status.textContent = "일부 방을 불러오지 못했어요.";
   if (!rooms.length) list.append(node("p", "방을 만들거나 초대 코드로 참가해 보세요.", "muted"));
+  const cards = new Map();
+  function markCompleted(code) {
+    const card = cards.get(code);
+    if (!card || !card.querySelector("[data-room-online]")) return;
+    card.href = exchangeUrl(code, "history");
+    card.replaceChildren(book(cardRooms.get(code), "독서 완료"));
+  }
+  const cardRooms = new Map(rooms.map(room => [room.code, room]));
+  bindRoomDeletion(list, cardRooms, card => {
+    cards.delete(card.dataset.code);
+    cardRooms.delete(card.dataset.code);
+    const next = card.nextElementSibling ?? card.previousElementSibling;
+    card.remove();
+    (next ?? $("#invite-code")).focus();
+    if (!cards.size) list.append(node("p", "방을 만들거나 초대 코드로 참가해 보세요.", "muted"));
+  });
   for (const room of rooms.sort((a,b) => b.createdAt.localeCompare(a.createdAt))) {
     const destination = room.completedAt ? exchangeUrl(room.code, "history")
       : pixelRoom(room.code);
     const card = node("a", "", "exchange-card room-card");
     card.href = destination;
-    const details = book(room, room.completedAt ? "교환독서 완료" : room.startedAt ? "독서 중" : "대기 중");
-    const label = onlineLabel(null);
-    label.dataset.roomOnline = room.code;
-    details.lastElementChild.append(label);
+    card.dataset.code = room.code;
+    card.setAttribute("aria-keyshortcuts", "Delete Shift+F10");
+    cards.set(room.code, card);
+    const details = book(room, room.completedAt ? "독서 완료" : room.startedAt ? "독서 중" : "대기 중");
+    if (!room.completedAt) {
+      const label = onlineLabel(null);
+      label.dataset.roomOnline = room.code;
+      details.lastElementChild.append(label);
+    }
     card.append(details);
     list.append(card);
   }
-  if (serverMode) publicRooms();
+  addEventListener("pageshow", event => { if (event.persisted) location.reload(); });
+  if (serverMode) publicRooms(markCompleted);
   else {
+    if (typeof BroadcastChannel !== "undefined") {
+      const channel = new BroadcastChannel("bookmate-local-completed");
+      channel.onmessage = event => markCompleted(event.data);
+      addEventListener("pagehide", () => channel.close(), { once: true });
+    }
     function refreshLocalCounts() {
       for (const label of list.querySelectorAll("[data-room-online]")) {
         label.textContent = onlineSlots("bookmate-presence-v1:" + label.dataset.roomOnline + ":").length + "명 온라인";

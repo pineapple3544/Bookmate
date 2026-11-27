@@ -1,3 +1,4 @@
+import { deleteRoomDatabase } from "./local-transport.js";
 import { serverMode, serverAvailable, ensureAccount, apiRequest } from "./account.js";
 export const exchangeCode = new URLSearchParams(location.search).get("code")?.toUpperCase() ?? "";
 const key = code => "bookmate-exchange:" + code;
@@ -53,6 +54,22 @@ export async function myExchanges() {
   }
   return Object.keys(localStorage).filter(name => name.startsWith(key(""))).map(name => name.slice(key("").length));
 }
+export async function leaveExchange(room, confirmation) {
+  const result = await exchangeRequest(room.code, "leave", confirmation);
+  try {
+    if (!serverMode) localStorage.removeItem(key(room.code));
+    localStorage.removeItem("bookmate-pixel-prototype-v1:" + room.code);
+    if (result.deleted) {
+      for (let slot = 0; slot < room.capacity; slot++) {
+        localStorage.removeItem("bookmate-avatar-v1:" + room.code + ":" + slot);
+        localStorage.removeItem("bookmate-local-user-v1:" + room.code + ":" + slot);
+      }
+      deleteRoomDatabase(room.code);
+    }
+  } catch { /* The server has already confirmed departure. */ }
+  return result;
+}
+
 export async function exchangeRequest(code = "", action = "", body) {
   if(serverMode){
     await ensureAccount();
@@ -73,6 +90,11 @@ export async function exchangeRequest(code = "", action = "", body) {
   const data = await response.json();
   if (!response.ok) throw Object.assign(new Error(data.message), { status: response.status });
   if (data.token) localStorage.setItem(key(data.room.code), data.token);
+  if (action === "finish" && data.completedAt && typeof BroadcastChannel !== "undefined") {
+    const channel = new BroadcastChannel("bookmate-local-completed");
+    channel.postMessage(code);
+    channel.close();
+  }
   return data.room ?? data;
 }
 

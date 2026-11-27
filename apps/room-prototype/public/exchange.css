@@ -66,6 +66,13 @@ body.reading-ui {
   .bookmate-nav a:hover { background: #e7ecd7; color: var(--mint); }
 }
 .room-card { color: var(--text); text-decoration: none; }
+.room-card { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+#room-delete { box-sizing: border-box; width: min(360px, calc(100% - 32px)); text-align: center; padding: 22px; }
+#room-delete h2 { margin-top: 0; }
+#room-delete-name { font-weight: bold; overflow-wrap: anywhere; }
+#room-delete-status:empty { display: none; }
+#room-delete .exchange-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+#room-delete .button { justify-content: center; min-height: 44px; }
 .room-card:hover { background: #fff2db; }
 #wardrobe-editor {
   --shop-width: min(700px, calc(100vw - 40px));

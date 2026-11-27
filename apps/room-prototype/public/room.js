@@ -10,7 +10,7 @@ import { deleteRoomDatabase, localMode } from "./local-transport.js";
 import { createChat } from "./chat.js";
 import { isRating, setupRating } from "./rating.js";
 import { showCover } from "./cover-editor.js";
-import { exchangeCode, exchangeRequest, exchangeUrl, themes } from "./exchange-client.js";
+import { exchangeCode, exchangeRequest, exchangeUrl, leaveExchange, themes } from "./exchange-client.js";
 import { drawAvatar, normalizeAppearance } from "./avatar.js";
 import { appearanceWithPet, bookPetId, createWardrobe, drawBookPet, equippedPet, loadPets, petCollectionKeyFor, readPets } from "./wardrobe.js";
 const canvas = document.querySelector("#room");
@@ -1190,17 +1190,9 @@ exitLeave.onclick = async () => {
   leaving = true;
   exitHome.disabled = exitLeave.disabled = true;
   try {
-    const result = await exchangeRequest(exchangeCode, "leave", exitConfirmation);
+    await leaveExchange(exchange, exitConfirmation);
     exitedPermanently = true;
-    try {
-      if (!serverMode) localStorage.removeItem("bookmate-exchange:" + exchangeCode);
-      localStorage.removeItem(storageKey);
-      if (result.deleted) {
-        appearanceKeys.forEach(key => localStorage.removeItem(key));
-        for (let slot = 0; slot < capacity; slot++) localStorage.removeItem(slotPrefix + slot);
-        deleteRoomDatabase();
-      }
-    } finally { location.replace(homeUrl); }
+    location.replace(homeUrl);
   } catch (error) {
     if (error.status === 409) {
       try { const latest = await exchangeRequest(exchangeCode); setExitConfirmation(true, latest.members.length === 1); } catch { setExitConfirmation(false); }

@@ -101,10 +101,13 @@ export function registerExchanges(
   app.get("/api/v1/exchanges/online", async req => {
     const uid = await authenticate(req);
     const ids = presence.roomIds();
-    if (!ids.length) return { online: {} };
-    const mine = await db.room.findMany({ where: { id: { in: ids }, exchangeCode: { not: null },
-      members: { some: { userId: uid } } }, select: { id: true, exchangeCode: true } });
-    return { online: Object.fromEntries(mine.map(r => [r.exchangeCode!, presence.onlineCount(r.id)])) };
+    const mine = await db.room.findMany({ where: { exchangeCode: { not: null },
+      members: { some: { userId: uid } }, OR: [{ id: { in: ids } }, { completedAt: { not: null } }] },
+      select: { id: true, exchangeCode: true, completedAt: true } });
+    return {
+      online: Object.fromEntries(mine.filter(r => !r.completedAt).map(r => [r.exchangeCode!, presence.onlineCount(r.id)])),
+      completed: mine.filter(r => r.completedAt).map(r => r.exchangeCode!),
+    };
   });
 
   app.post<{ Params: { code: string }; Body: { deleteIfLast: boolean } }>(

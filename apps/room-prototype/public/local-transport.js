@@ -6,16 +6,18 @@ const code = new URLSearchParams(location.search).get("code");
 const roomSuffix = /^[A-F0-9]{8}$/i.test(code ?? "") ? ":" + code.toUpperCase() : "";
 const presencePrefix = "bookmate-presence-v1" + roomSuffix + ":";
 let database;
-function databaseName() {
-  return "bookmate-local-v1" + roomSuffix + (serverMode && account && roomSuffix ? ":" + account.id : "");
+function databaseName(suffix = roomSuffix) {
+  return "bookmate-local-v1" + suffix + (serverMode && account && suffix ? ":" + account.id : "");
 }
-export function deleteRoomDatabase() {
-  if (!roomSuffix) return;
-  const prefix = "bookmate-local-v1" + roomSuffix;
-  indexedDB.deleteDatabase(databaseName());
+export function deleteRoomDatabase(roomCode = code) {
+  if (!/^[A-F0-9]{8}$/i.test(roomCode ?? "")) return;
+  const suffix = ":" + roomCode.toUpperCase();
+  const prefix = "bookmate-local-v1" + suffix;
+  const current = databaseName(suffix);
+  indexedDB.deleteDatabase(current);
   indexedDB.databases?.().then(entries => {
     for (const { name } of entries) {
-      if (name && name !== databaseName() && (name === prefix || name.startsWith(prefix + ":")))
+      if (name && name !== current && (name === prefix || name.startsWith(prefix + ":")))
         indexedDB.deleteDatabase(name);
     }
   }).catch(() => {});
