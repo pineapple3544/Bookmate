@@ -37,7 +37,7 @@
 | 나의 교환독서 | 방 만들기 |
 | :---: | :---: |
 | <img src="docs/screenshots/home.png" alt="홈 화면" width="420"> | <img src="docs/screenshots/create-room.png" alt="방 만들기 화면" width="420"> |
-| 참여 중인 방과 체험용 독서방을 한눈에 봐요. 초대 코드 8자리로 바로 참가할 수 있어요. | 책 제목·저자·참여 인원(2~10명)·표지 색을 고르면 표지가 바로 미리 보여요. |
+| 참여 중인 독서방을 한눈에 봐요. 초대 코드 8자리로 바로 참가할 수 있어요. | 책 제목·저자·참여 인원(2~10명)·표지 색을 고르면 표지가 바로 미리 보여요. |
 
 ### 대기실 · 독서방
 
@@ -78,7 +78,7 @@ cd Bookmate
 node apps/room-prototype/server.js
 ```
 
-브라우저에서 **http://localhost:5173** 을 열면 돼요. Node.js **24**가 필요해요. 홈의 **체험 독서방** 네 개로 진행 단계별 화면(대기, 독서 중, 완독)을 바로 볼 수 있어요.
+브라우저에서 **http://localhost:5173** 을 열면 돼요. Node.js **24**가 필요해요. 대기 중인 체험방은 [대기 화면](http://localhost:5173/?screen=demo&state=waiting)에서 열 수 있어요.
 
 ### 방법 2. 회원가입·DB까지 전체 실행 (Docker 필요)
 

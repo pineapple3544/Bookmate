@@ -84,7 +84,7 @@ export async function ensureAccount() {
       dialog.id = "account-dialog";
       // Static form markup; all server/user messages below use textContent.
       dialog.innerHTML =
-        '<form id="account-form"><h2>로그인</h2><label>이메일<input name="email" type="email" required autocomplete="email"></label><label>비밀번호<input name="password" type="password" minlength="10" maxlength="128" required autocomplete="current-password"></label><p id="account-status" role="status"></p><div class="record-actions"><button type="submit" class="button primary">로그인</button><button id="account-switch" type="button" class="button secondary">회원가입</button></div><a href="/room.html">로컬 체험방</a></form>';
+        '<form id="account-form"><h2>로그인</h2><label>이메일<input name="email" type="email" required autocomplete="email"></label><label>비밀번호<input name="password" type="password" minlength="10" maxlength="128" required autocomplete="current-password"></label><p id="account-status" role="status"></p><div class="record-actions"><button type="submit" class="button primary">로그인</button><button id="account-switch" type="button" class="button secondary">회원가입</button></div></form>';
       document.body.append(dialog);
       dialog.addEventListener("cancel", (event) => event.preventDefault());
       dialog.showModal();

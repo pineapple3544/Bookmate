@@ -31,6 +31,7 @@ async function actor(n, path = "/") {
   emails.push(email);
   await page.goto(base + path);
   await page.locator("#account-dialog").waitFor();
+  assert.equal(await page.getByRole("link", { name: "로컬 체험방" }).count(), 0);
   await page.locator("#account-switch").click();
   assert.equal(await page.locator('#account-form [name="nickname"]').count(), 0);
   await page.locator('#account-form [name="email"]').fill(email);
@@ -59,6 +60,9 @@ async function finish(page, rating, review) {
 }
 try {
   const a = await actor(1);
+  await a.locator("#home-view").waitFor();
+  assert.equal(await a.locator('#home-view a[href*="screen=demo"], #home-view a[href="/room.html"]').count(), 0);
+  assert.ok(await a.locator("#invite-code").isVisible());
   // A signed-in user may be returning from the local preview.
   await a.goto(base + "/?local=1");
   await a.locator("#home-view").waitFor();
