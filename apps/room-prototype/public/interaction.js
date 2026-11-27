@@ -5,13 +5,20 @@ export function seatOccupied(index, user, users) {
   return users.some(other => other !== user && other.seat === index);
 }
 
-export function interactionTarget(user, users, seats, cabinet, playerSlots = []) {
+export function interactionTarget(user, users, seats, cabinet, playerSlots = [], door) {
   if (user.seat !== null) return user.seat;
   // Distance from the avatar's feet to the cabinet footprint on the floor.
   const dx = Math.max(cabinet.x - user.x, 0, user.x - cabinet.x - cabinet.width);
   const dy = Math.max(cabinet.y + 24 - user.y, 0, user.y - cabinet.y - cabinet.height);
   let closest = Math.hypot(dx, dy);
   let target = closest <= interactionRadius ? "wardrobe" : null;
+  if (door) {
+    const distance = Math.hypot(Math.max(0, Math.abs(user.x - door.x) - 17), user.y - door.y);
+    if (distance <= interactionRadius && (target === null || distance < closest)) {
+      target = "door";
+      closest = distance;
+    }
+  }
   for (const [index, seat] of seats.entries()) {
     const distance = Math.hypot(user.x - seat.x, user.y - seat.y);
     if (distance <= interactionRadius && (target === null || distance < closest) &&

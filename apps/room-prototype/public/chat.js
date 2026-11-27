@@ -58,7 +58,7 @@ export function createChat({
   function showBubble(message, serverTime) {
     const remaining =
       6000 - (Date.parse(serverTime) - Date.parse(message.createdAt));
-    if (remaining <= 0) return;
+    if (remaining <= 0 || !getUsers()[message.senderSlot]) return;
     const previous = bubbles.get(message.senderSlot);
     if (previous && BigInt(previous.sequence) >= BigInt(message.sequence))
       return;
@@ -99,6 +99,7 @@ export function createChat({
     const offset = Number(stage.dataset.offsetX) || 0;
     for (const [slot, bubble] of bubbles) {
       const user = getUsers()[slot];
+      if (!user) { bubble.element.hidden = true; continue; }
       const x = offset + (user.x / 640) * stage.clientWidth;
       const y = ((user.y - 55) / 400) * stage.clientHeight;
       bubble.element.hidden = x < 0 || x > width;
@@ -132,7 +133,7 @@ export function createChat({
       const heading = document.createElement("div");
       heading.className = "chat-message-heading";
       const name = document.createElement("strong");
-      name.textContent = memberName(message.senderSlot);
+      name.textContent = message.senderName ?? memberName(message.senderSlot);
       const time = document.createElement("time");
       time.dateTime = message.createdAt;
       time.textContent = new Date(message.createdAt).toLocaleString("ko-KR", {
@@ -209,7 +210,7 @@ export function createChat({
       pending.text !== text ||
       pending.senderSlot !== getSelected()
     ) {
-      pending = { id: crypto.randomUUID(), senderSlot: getSelected(), text };
+      pending = { id: crypto.randomUUID(), senderSlot: getSelected(), senderName: memberName(getSelected()), text };
     }
     sending = true;
     sendButton.disabled = true;

@@ -222,6 +222,15 @@
         </button>
       </aside>
     </main>
+    <dialog id="exit-dialog" aria-labelledby="exit-title">
+      <div class="dialog-heading"><h2 id="exit-title">방 나가기</h2><button id="exit-close" type="button" aria-label="닫기">x</button></div>
+      <p id="exit-question" hidden></p>
+      <div class="exit-actions">
+        <button id="exit-home" type="button" autofocus>홈화면으로 가기</button>
+        <button id="exit-leave" type="button">방 영구 나가기</button>
+      </div>
+      <p id="exit-status" role="status"></p>
+    </dialog>
     <dialog id="record-feed" aria-label="페이지 코멘트">
       <button type="button" class="icon-button close record-book-close" aria-label="닫기">x</button>
       <p id="feed-status" role="status"></p>

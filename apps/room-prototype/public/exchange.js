@@ -1,3 +1,4 @@
+import { onlineSlots } from "./local-transport.js";
 import { coverEditor, showCover } from "./cover-editor.js";
 import { serverMode, serverAvailable, localExchangeAvailable, ensureAccount, account, apiRequest } from "./account.js";
 import { exchangeCode as code, exchangeRequest, exchangeUrl, myExchanges, getDefaultAppearance, saveDefaultAppearance, themes } from "./exchange-client.js";
@@ -83,6 +84,12 @@ function enterNewRoom(room) {
   sessionStorage.setItem("bookmate-entry:" + room.code, room.members[room.me].id);
   location.href = pixelRoom(room.code);
 }
+function onlineLabel(count) {
+  const label = node("span", "", "online-count");
+  label.hidden = count == null;
+  if (!label.hidden) label.textContent = count + "명 온라인";
+  return label;
+}
 function publicRooms() {
   const list = $("#public-list"), feedback = $("#public-status");
   $("#public-rooms").hidden = false;
@@ -91,19 +98,26 @@ function publicRooms() {
     if (loading || joining || document.hidden) return;
     loading = true;
     try {
-      const { rooms } = await apiRequest("/api/v1/exchanges/public");
+      const [{ rooms }, { online }] = await Promise.all([
+        apiRequest("/api/v1/exchanges/public"), apiRequest("/api/v1/exchanges/online"),
+      ]);
+      for (const label of document.querySelectorAll("#room-list [data-room-online]")) {
+        label.textContent = (online[label.dataset.roomOnline] ?? 0) + "명 온라인";
+        label.hidden = false;
+      }
       if (joining) return;
       const signature = JSON.stringify(rooms);
       if (signature !== rendered) {
         const focused = document.activeElement?.dataset.joinRoom;
         list.replaceChildren(...rooms.map(room => {
           const row = node("div", "", "exchange-card public-room");
-          const subtitle = room.online + "명 온라인 / 참가 " + room.joined + "/" + room.capacity;
+          const details = book(room, "");
+          details.lastElementChild.append(onlineLabel(room.online));
           const button = node("button", "참가하기", "button secondary");
           button.type = "button";
           button.dataset.joinRoom = room.id;
           button.setAttribute("aria-label", room.title + " 참가하기");
-          row.append(book(room, subtitle), button);
+          row.append(details, button);
           return row;
         }));
         if (focused) list.querySelector('[data-join-room="' + focused + '"]')?.focus({ preventScroll: true });
@@ -139,7 +153,6 @@ function publicRooms() {
 }
 async function home() {
   $("#home-view").hidden = false;
-  if (serverMode) publicRooms();
   form("#code-form", ({ code }) => { location.href = exchangeUrl(code.trim().toUpperCase()); });
   const list = $("#room-list");
   const results = await Promise.allSettled((await myExchanges()).map(code => exchangeRequest(code)));
@@ -151,10 +164,24 @@ async function home() {
       : pixelRoom(room.code);
     const card = node("a", "", "exchange-card room-card");
     card.href = destination;
-    const done = room.members.filter(person => person.finishedAt).length;
-    const subtitle = room.completedAt ? "교환독서 완료" : room.startedAt ? done + "/" + room.members.length + "명 완독" : "대기 중";
-    card.append(book(room, subtitle));
+    const details = book(room, room.completedAt ? "교환독서 완료" : room.startedAt ? "독서 중" : "대기 중");
+    const label = onlineLabel(null);
+    label.dataset.roomOnline = room.code;
+    details.lastElementChild.append(label);
+    card.append(details);
     list.append(card);
+  }
+  if (serverMode) publicRooms();
+  else {
+    function refreshLocalCounts() {
+      for (const label of list.querySelectorAll("[data-room-online]")) {
+        label.textContent = onlineSlots("bookmate-presence-v1:" + label.dataset.roomOnline + ":").length + "명 온라인";
+        label.hidden = false;
+      }
+    }
+    refreshLocalCounts();
+    const timer = setInterval(refreshLocalCounts, 4000);
+    addEventListener("pagehide", event => { if (!event.persisted) clearInterval(timer); });
   }
 }
 function waiting(initial) {
@@ -354,6 +381,9 @@ function waiting(initial) {
   addEventListener("pagehide", () => clearInterval(timer), { once: true });
 }
 function history(room) {
+  const readers = [...room.members, ...(room.departed ?? []).filter(person => person.finishedAt)]
+    .sort((a, b) => a.recordSlot - b.recordSlot);
+  room = { ...room, members: readers };
   $("#history-view").hidden = false;
   $("#history-book").append(book(room, "완료 " + date(room.completedAt)));
   ticket(room);

@@ -78,7 +78,7 @@ function element(tag, text, className) {
   return node;
 }
 
-export function createRecords({ getSelected, getUsers, canOpen, onSave, memberName }) {
+export function createRecords({ getSelected, getUsers, getPage, canOpen, onSave, memberName }) {
   const notes = attachNotes({getSelected,canOpen});
   const feed = document.querySelector("#record-feed");
   const dialog = document.querySelector("#record-dialog");
@@ -704,7 +704,7 @@ export function createRecords({ getSelected, getUsers, canOpen, onSave, memberNa
   });
   document.querySelector("#record-publish").addEventListener("click", () => {
     if (!canOpen() || busy) return;
-    page.value = getUsers()[getSelected()].page;
+    page.value = getPage();
     status.textContent = "";
     dialog.showModal();
     void notes.load(Number(page.value));

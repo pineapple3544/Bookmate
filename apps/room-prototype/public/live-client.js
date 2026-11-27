@@ -17,7 +17,8 @@ export function createLiveRoom({ room, refreshMembers, onPosition, onPresence, o
     const index = room.members.findIndex(member => member.id === id);
     return index < 0 ? undefined : index;
   };
-  const message = (m) => ({ ...m, senderSlot: slot(m.senderId) });
+  const departedName = id => room.departed?.find(person => person.id === id)?.name;
+  const message = m => ({ ...m, senderSlot: slot(m.senderId), senderName: slot(m.senderId) === undefined ? departedName(m.senderId) : undefined });
   const sequences = new Map(), seats = new Map();
   let sequence = 0, checkpoint = 0, requestedSeat, claimSeq = 0;
   function send(frame) {
@@ -186,15 +187,13 @@ export function createLiveRoom({ room, refreshMembers, onPosition, onPresence, o
         options.method ?? "GET",
         body ? { id: body.id, text: body.text } : undefined,
       );
-      if (data.messages?.some(m => slot(m.senderId) === undefined)) await refreshMembers();
+      if (data.messages?.some(m => slot(m.senderId) === undefined && !departedName(m.senderId))) await refreshMembers();
       return {
         ...data,
         ...(data.message ? { message: message(data.message) } : {}),
         ...(data.messages
           ? {
-              messages: data.messages
-                .filter((m) => slot(m.senderId) !== undefined)
-                .map(message),
+              messages: data.messages.map(message),
             }
           : {}),
         serverTime: data.serverTime ?? new Date().toISOString(),

@@ -6,10 +6,24 @@ const code = new URLSearchParams(location.search).get("code");
 const roomSuffix = /^[A-F0-9]{8}$/i.test(code ?? "") ? ":" + code.toUpperCase() : "";
 const presencePrefix = "bookmate-presence-v1" + roomSuffix + ":";
 let database;
+function databaseName() {
+  return "bookmate-local-v1" + roomSuffix + (serverMode && account && roomSuffix ? ":" + account.id : "");
+}
+export function deleteRoomDatabase() {
+  if (!roomSuffix) return;
+  const prefix = "bookmate-local-v1" + roomSuffix;
+  indexedDB.deleteDatabase(databaseName());
+  indexedDB.databases?.().then(entries => {
+    for (const { name } of entries) {
+      if (name && name !== databaseName() && (name === prefix || name.startsWith(prefix + ":")))
+        indexedDB.deleteDatabase(name);
+    }
+  }).catch(() => {});
+}
 export function openDatabase() {
   if (!database)
     database = new Promise((resolve, reject) => {
-      const request = indexedDB.open("bookmate-local-v1" + roomSuffix + (serverMode && account && roomSuffix ? ":" + account.id : ""), 4);
+      const request = indexedDB.open(databaseName(), 4);
       request.onupgradeneeded = () => {
         for(const name of ["recordBodies","recordImports","recordOutbox","recordRedactions"]){if(!request.result.objectStoreNames.contains(name))request.result.createObjectStore(name,{keyPath:"id"});}
         if (!request.result.objectStoreNames.contains("records"))
@@ -41,18 +55,18 @@ export function openDatabase() {
     });
   return database;
 }
-function onlineSlots() {
+export function onlineSlots(prefix = presencePrefix) {
   const slots = new Set();
   for (let i = localStorage.length - 1; i >= 0; i--) {
     const key = localStorage.key(i);
-    if (!key?.startsWith(presencePrefix)) continue;
+    if (!key?.startsWith(prefix)) continue;
     try {
       const value = JSON.parse(localStorage.getItem(key));
       if (
         Date.now() - value.time < 25000 &&
         Number.isInteger(value.slot) &&
         value.slot >= 0 &&
-        value.slot < (roomSuffix ? 10 : 4)
+        value.slot < (prefix === "bookmate-presence-v1:" ? 4 : 10)
       )
         slots.add(value.slot);
       else localStorage.removeItem(key);
@@ -106,6 +120,7 @@ export async function localRequest(url, options = {}) {
           id: body.id,
           text: body.text.trim(),
           senderSlot: body.senderSlot,
+          senderName: body.senderName,
           createdAt: serverTime,
         };
         const add = store.add(message);

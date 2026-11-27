@@ -71,7 +71,7 @@ export async function exchangeRequest(code = "", action = "", body) {
     method: body ? "POST" : "GET", headers, body: body ? JSON.stringify(body) : undefined,
   });
   const data = await response.json();
-  if (!response.ok) throw new Error(data.message);
+  if (!response.ok) throw Object.assign(new Error(data.message), { status: response.status });
   if (data.token) localStorage.setItem(key(data.room.code), data.token);
   return data.room ?? data;
 }

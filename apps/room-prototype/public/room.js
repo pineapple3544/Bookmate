@@ -6,7 +6,7 @@ import { peerProfile, renderProfileShelf } from "./profile.js";
 import { serverMode, account } from "./account.js";
 import { createLiveRoom } from "./live-client.js";
 import { createRecords } from "./records.js";
-import { localMode } from "./local-transport.js";
+import { deleteRoomDatabase, localMode } from "./local-transport.js";
 import { createChat } from "./chat.js";
 import { isRating, setupRating } from "./rating.js";
 import { showCover } from "./cover-editor.js";
@@ -346,7 +346,9 @@ function toast(message) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => $("#toast").classList.remove("visible"), 1700);
 }
+let exitedPermanently = false;
 function save() {
+  if (exitedPermanently) return;
   try {
     localStorage.setItem(storageKey, JSON.stringify(state));
     if (localMode)
@@ -682,7 +684,7 @@ const roomPlayerSlots = exchange ? exchange.members.map((_, slot) => slot) : nul
 
 function currentInteraction() {
   if (pendingSeat !== null) return null;
-  return interactionTarget(displayUsers[state.selected], displayUsers, seats, cabinetBounds, roomPlayerSlots ?? onlineSlots);
+  return interactionTarget(displayUsers[state.selected], displayUsers, seats, cabinetBounds, roomPlayerSlots ?? onlineSlots, exchange ? door : undefined);
 }
 
 function syncInteractionFocus() {
@@ -703,7 +705,7 @@ function syncInteractionFocus() {
   let actionName = "상호작용";
   if (next !== null) {
     const isWardrobe = next === "wardrobe";
-    const bounds = peer ? { x: peer.x - 16, y: peer.y - 33, width: 32, height: 38 } : isWardrobe ? cabinetBounds : {
+    const bounds = peer ? { x: peer.x - 16, y: peer.y - 33, width: 32, height: 38 } : next === "door" ? { x: door.x - 19, y: door.y - 58, width: 38, height: 61 } : isWardrobe ? cabinetBounds : {
       x: seats[next].x - 19, y: seats[next].y - 32, width: 38, height: 58,
     };
     Object.assign(focusMark.style, {
@@ -713,7 +715,7 @@ function syncInteractionFocus() {
       height: bounds.height / canvas.height * 100 + "%",
     });
     focusMark.dataset.target = typeof next === "string" ? next : "chair-" + next;
-    actionName += " / " + (isPlayer ? peerName + " 프로필 보기" : isWardrobe ? "캐릭터 꾸미기" : seated ? "일어나기" : "의자에 앉기");
+    actionName += " / " + (isPlayer ? peerName + " 프로필 보기" : next === "door" ? "방 나가기" : isWardrobe ? "캐릭터 꾸미기" : seated ? "일어나기" : "의자에 앉기");
   } else {
     delete focusMark.dataset.target;
   }
@@ -1148,6 +1150,68 @@ async function openPeerProfile(slot) {
     if (request === profileRequest && peerDialog.open) status.textContent = error.message;
   }
 }
+const exitDialog = $("#exit-dialog");
+const exitHome = $("#exit-home");
+const exitLeave = $("#exit-leave");
+const homeUrl = serverMode ? "/" : "/?local=1";
+let exitConfirmation = null;
+let leaving = false;
+function setExitConfirmation(confirm, last = exchange.members.length === 1) {
+  exitConfirmation = confirm ? { deleteIfLast: last } : null;
+  const question = $("#exit-question");
+  question.hidden = !confirm;
+  question.textContent = !confirm ? "" : exitConfirmation.deleteIfLast
+    ? "마지막 참가자예요. 방과 채팅, 독서 기록을 삭제할까요?"
+    : "이 방에서 영구적으로 나갈까요?";
+  exitHome.textContent = confirm ? "취소" : "홈화면으로 가기";
+  exitLeave.textContent = exitConfirmation?.deleteIfLast ? "방과 기록 삭제" : "방 영구 나가기";
+  $("#exit-status").textContent = "";
+}
+function openExit() {
+  setExitConfirmation(false);
+  exitLeave.disabled = !serverMode && new URLSearchParams(location.search).has("viewer");
+  exitDialog.showModal();
+  exitHome.focus();
+}
+$("#exit-close").onclick = () => { if (!leaving) exitDialog.close(); };
+exitDialog.addEventListener("cancel", event => { if (leaving) event.preventDefault(); });
+exitHome.onclick = () => {
+  if (leaving) return;
+  if (exitConfirmation) setExitConfirmation(false);
+  else location.assign(homeUrl);
+};
+exitLeave.onclick = async () => {
+  if (leaving) return;
+  if (!exitConfirmation) {
+    setExitConfirmation(true);
+    exitHome.focus();
+    return;
+  }
+  leaving = true;
+  exitHome.disabled = exitLeave.disabled = true;
+  try {
+    const result = await exchangeRequest(exchangeCode, "leave", exitConfirmation);
+    exitedPermanently = true;
+    try {
+      if (!serverMode) localStorage.removeItem("bookmate-exchange:" + exchangeCode);
+      localStorage.removeItem(storageKey);
+      if (result.deleted) {
+        appearanceKeys.forEach(key => localStorage.removeItem(key));
+        for (let slot = 0; slot < capacity; slot++) localStorage.removeItem(slotPrefix + slot);
+        deleteRoomDatabase();
+      }
+    } finally { location.replace(homeUrl); }
+  } catch (error) {
+    if (error.status === 409) {
+      try { const latest = await exchangeRequest(exchangeCode); setExitConfirmation(true, latest.members.length === 1); } catch { setExitConfirmation(false); }
+    }
+    $("#exit-status").textContent = error.message;
+    exitHome.focus();
+  } finally {
+    leaving = false;
+    exitHome.disabled = exitLeave.disabled = false;
+  }
+};
 function interact(trigger) {
   const user = state.users[state.selected];
   // A late position or occupancy update must never redirect an already displayed action.
@@ -1163,6 +1227,7 @@ function interact(trigger) {
       path = [];
       finishMovement();
     }
+    if (selectedTarget === "door") { openExit(); return; }
     if (selectedTarget.startsWith("player-")) {
       void openPeerProfile(Number(selectedTarget.slice(7)));
       return;
@@ -1187,10 +1252,12 @@ document.addEventListener("keydown", event => {
 const sharedRecords = exchange && serverMode ? createSharedRecords(exchange) : null;
 if(sharedRecords)setSharedRecords(sharedRecords);
 const records = createRecords({
-  getSelected: () => state.selected,
+  getSelected: () => exchange?.members[state.selected]?.recordSlot ?? state.selected,
+  getPage: () => state.users[state.selected].page,
   getUsers: () => state.users,
   canOpen: canOpenRecords,
-  memberName,
+  memberName: slot => exchange ? exchange.members.find(m => m.recordSlot === slot)?.name ??
+    exchange.departed?.find(m => m.recordSlot === slot)?.name ?? "사용자" : memberName(slot),
   onSave(page) {
     state.users[state.selected].page = page;
     save();
@@ -1410,6 +1477,7 @@ window.addEventListener("pagehide", save);
 live?.publish(state.users[state.selected]);
 update();
 function applyExchange(next) {
+  if (next.me < 0) { location.replace(homeUrl); return; }
   if (next.version < exchange.version) return;
   if (exchange.capacity !== next.capacity || exchange.title !== next.title ||
       exchange.author !== next.author || exchange.theme !== next.theme || exchange.coverUrl !== next.coverUrl ||
@@ -1434,6 +1502,7 @@ let fetchingExchange;
 function refreshExchange() {
   if (!fetchingExchange) fetchingExchange = exchangeRequest(exchangeCode)
     .then(next => { if (JSON.stringify(exchange) !== JSON.stringify(next)) applyExchange(next); })
+    .catch(error => { if (error.status !== 404) throw error; deleteRoomDatabase(); location.replace(homeUrl); })
     .finally(() => { fetchingExchange = undefined; });
   return fetchingExchange;
 }

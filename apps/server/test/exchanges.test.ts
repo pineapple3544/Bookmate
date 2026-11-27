@@ -328,6 +328,27 @@ test(
       }
       assert.equal((await call("POST", race + "/join", fourth.cookie, {})).statusCode, 409);
 
+      const leavePath = await startTwo(3);
+      const leave = (user: typeof a, deleteIfLast = false) =>
+        call("POST", leavePath + "/leave", user.cookie, { deleteIfLast });
+      assert.equal((await leave(c, true)).statusCode, 403);
+      assert.deepEqual((await leave(a)).json(), { deleted: false });
+      const afterExit = (await call("GET", leavePath, b.cookie)).json().room;
+      assert.equal(afterExit.isHost, true);
+      assert.ok(afterExit.members[0].receivedAt);
+      assert.equal(afterExit.members[0].recordSlot, 1);
+      assert.equal(afterExit.departed[0].id, a.id);
+      assert.equal((await call("GET", leavePath, a.cookie)).json().room.me, -1);
+      const late = (await call("POST", leavePath + "/join", c.cookie, {})).json().room;
+      assert.equal(late.members[1].recordSlot, 2);
+      const results = await Promise.all([leave(b), leave(c)]);
+      assert.deepEqual(results.map(r => r.statusCode).sort(), [200, 409]);
+      const last = results[0]!.statusCode === 409 ? b : c;
+      assert.deepEqual((await leave(last, true)).json(), { deleted: true });
+      assert.equal((await call("GET", leavePath, last.cookie)).statusCode, 404);
+      assert.equal(await db.roomDeparture.count({ where: { roomId: afterExit.id } }), 0);
+      assert.equal(await db.bookTransfer.count({ where: { roomId: afterExit.id } }), 0);
+
       const publicRoom = (await call("POST", "/rooms", b.cookie,
         { title: "서재", bookTitle: "책", visibility: "PUBLIC" })).json().room;
       rooms.push(publicRoom.id);

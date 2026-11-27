@@ -69,8 +69,18 @@ model Room {
   transfers BookTransfer[]
   messages ChatMessage[]
   recordOperations RecordOperation[]
+  departures RoomDeparture[]
 
   @@index([visibility, createdAt])
+}
+
+model RoomDeparture {
+  id         Int  @id @default(autoincrement())
+  roomId     String @db.Uuid
+  room       Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  recordSlot Int?
+  snapshot   Json
+  @@index([roomId])
 }
 
 model RoomMember {

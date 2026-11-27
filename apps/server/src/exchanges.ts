@@ -13,6 +13,7 @@ function checkedCover(value: unknown) {
 }
 const included = {
   cover: { select: { hash: true } },
+  departures: { select: { recordSlot: true, snapshot: true } },
   members: {
     orderBy: { readingOrder: "asc" as const },
     include: { user: { select: { id: true, nickname: true } } },
@@ -51,8 +52,11 @@ function view(room: any, uid: string) {
     version: room.version,
     me,
     isHost: room.exchangeOwnerId === uid,
+    departed: me < 0 ? [] : room.departures.map(({ recordSlot, snapshot }: any) => room.completedAt
+      ? { ...snapshot, recordSlot } : { id: snapshot.id, name: snapshot.name, recordSlot }),
     members: room.members.map((m: any) => ({
       id: m.userId,
+      recordSlot: m.readingOrder - 1,
       name: m.user.nickname,
       isHost: room.exchangeOwnerId === m.userId,
       ...(me >= 0
@@ -70,7 +74,7 @@ export function registerExchanges(
   app: FastifyInstance,
   db: PrismaClient,
   authenticate: (req: FastifyRequest) => Promise<string>,
-  presence: { roomIds(): string[]; onlineCount(id: string): number },
+  presence: { roomIds(): string[]; onlineCount(id: string): number; remove(id: string, uid?: string): void },
 ) {
   async function load(tx: Tx, code: string, lock = false) {
     if (lock)
@@ -88,12 +92,62 @@ export function registerExchanges(
       fail(409, "완독했거나 인원이 찬 방이에요.");
     await tx.roomMember.create({
       data: { roomId: room.id, userId: uid, appearance: await inheritedAppearance(tx, uid),
-        readingOrder: (room.members.at(-1)?.readingOrder ?? 0) + 1 },
+        readingOrder: room.departures.reduce((last, d) => Math.max(last, (d.recordSlot ?? -1) + 1), room.members.at(-1)?.readingOrder ?? 0) + 1 },
     });
     const updated = await tx.room.update({ where: { id: room.id }, data: { version: { increment: 1 } }, include: included });
     return view(updated, uid);
   }
 
+  app.get("/api/v1/exchanges/online", async req => {
+    const uid = await authenticate(req);
+    const ids = presence.roomIds();
+    if (!ids.length) return { online: {} };
+    const mine = await db.room.findMany({ where: { id: { in: ids }, exchangeCode: { not: null },
+      members: { some: { userId: uid } } }, select: { id: true, exchangeCode: true } });
+    return { online: Object.fromEntries(mine.map(r => [r.exchangeCode!, presence.onlineCount(r.id)])) };
+  });
+
+  app.post<{ Params: { code: string }; Body: { deleteIfLast: boolean } }>(
+    "/api/v1/exchanges/:code/leave", { schema: {
+      params: { type: "object", properties: { code: { type: "string", pattern: "^[A-F0-9]{8}$" } } },
+      body: { type: "object", required: ["deleteIfLast"], properties: { deleteIfLast: { type: "boolean" } } },
+    } }, async req => {
+      const uid = await authenticate(req);
+      const result = await db.$transaction(async tx => {
+        const room = await load(tx, req.params.code, true);
+        const person = room.members.find(m => m.userId === uid);
+        if (!person) return fail(403, "이미 참가 중인 방이 아니에요.");
+        const remaining = room.members.filter(m => m.userId !== uid);
+        if (!remaining.length) {
+          if (!req.body.deleteIfLast) return fail(409, "마지막 참가자예요. 방과 기록 삭제를 확인해 주세요.");
+          await tx.room.delete({ where: { id: room.id } });
+          return { id: room.id, deleted: true };
+        }
+        const snapshot = view(room, uid).members.find((m: any) => m.id === uid);
+        await tx.roomDeparture.create({ data: { roomId: room.id,
+          recordSlot: room.startedAt ? person.readingOrder - 1 : null,
+          snapshot: JSON.parse(JSON.stringify(snapshot)) } });
+        const successor = remaining[0]!;
+        const changeHost = room.exchangeOwnerId === uid;
+        if (changeHost) await tx.roomMember.update({ where: { roomId_userId: { roomId: room.id, userId: successor.userId } }, data: { role: "ADMIN" } });
+        const changeReader = room.bookHolderId === uid && !room.completedAt;
+        const next = remaining.find(m => m.readingStatus === "WAITING");
+        if (changeReader && next) {
+          await tx.roomMember.update({ where: { roomId_userId: { roomId: room.id, userId: next.userId } },
+            data: { readingStatus: "READING", readingStartedAt: new Date() } });
+          await tx.bookTransfer.create({ data: { id: randomUUID(), roomId: room.id, fromUserId: uid, toUserId: next.userId, version: room.version + 1 } });
+        }
+        await tx.roomMember.delete({ where: { roomId_userId: { roomId: room.id, userId: uid } } });
+        await tx.room.update({ where: { id: room.id }, data: {
+          version: { increment: 1 }, ...(changeHost ? { exchangeOwnerId: successor.userId } : {}),
+          ...(room.bookHolderId === uid ? { bookHolderId: changeReader ? next?.userId ?? null : null } : {}),
+          ...(changeReader && !next ? { completedAt: new Date() } : {}),
+        } });
+        return { id: room.id, deleted: false };
+      });
+      presence.remove(result.id, result.deleted ? undefined : uid);
+      return { deleted: result.deleted };
+    });
   app.get("/api/v1/exchanges/public", async req => {
     const uid = await authenticate(req);
     const ids = presence.roomIds();

@@ -116,15 +116,16 @@ function demoViewers(room, token) {
 }
 function view(room, token, viewers = demoViewers(room, token)) {
   const me = room.members.findIndex(person => person.token === token);
-  const { cover, members, hostId = members[0].id, ...details } = room;
+  const { cover, members, departed = [], hostId = members[0].id, ...details } = room;
   return {
     coverUrl: cover ? "/api/exchanges/" + room.code + "/covers/" + cover.hash : null,
     ...(me >= 0 ? details : {
       code: room.code, title: room.title, author: room.author, theme: room.theme,
       capacity: room.capacity, startedAt: room.startedAt, completedAt: room.completedAt,
     }), ...(viewers.length ? { demoViewers: viewers } : {}), me, isHost: me >= 0 && members[me].id === hostId,
+    departed: me < 0 ? [] : departed.map(person => room.completedAt ? person : { id: person.id, name: person.name, recordSlot: person.recordSlot }),
     members: members.map(({ token: secret, profileId, ...person }, index) =>
-      me >= 0 ? { ...person, name: (profileId ? rooms.profiles?.[profileId]?.nickname ?? "소이" : person.name), review: room.completedAt || index === me ? person.review : undefined,
+      me >= 0 ? { ...person, recordSlot: person.recordSlot ?? index, name: (profileId ? rooms.profiles?.[profileId]?.nickname ?? "소이" : person.name), review: room.completedAt || index === me ? person.review : undefined,
         quote: room.completedAt || index === me ? person.quote : undefined,
         rating: room.completedAt || index === me ? person.rating : undefined, isHost: person.id === hostId }
         : { name: (profileId ? rooms.profiles?.[profileId]?.nickname ?? "소이" : person.name), isHost: person.id === hostId }),
@@ -189,7 +190,7 @@ export async function exchangeApi(request, response, url) {
       response.writeHead(200, { "Content-Type": "image/png", "X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=3600" });
       return response.end(Buffer.from(cover.png, "base64"));
     }
-    const match = /^\/api\/exchanges(?:\/([A-F0-9]{8})(?:\/(join|start|finish|review|appearance|settings|order))?)?$/.exec(url.pathname);
+    const match = /^\/api\/exchanges(?:\/([A-F0-9]{8})(?:\/(join|leave|start|finish|review|appearance|settings|order))?)?$/.exec(url.pathname);
     if (!match) reject("방을 찾을 수 없어요.", 404);
     const [, code, action] = match;
     const viewer = request.headers["x-bookmate-demo-viewer"];
@@ -230,6 +231,8 @@ export async function exchangeApi(request, response, url) {
       if (me >= 0) return send(200, { room: view(room, token), token });
       if (room.completedAt || room.members.length >= room.capacity) reject("완독했거나 인원이 찬 방이에요.", 409);
       const person = { ...member("소이", input.appearance), profileId };
+      if (room.startedAt) person.recordSlot = Math.max(-1, ...room.members.map((m,i) => m.recordSlot ?? i),
+        ...(room.departed ?? []).map(m => m.recordSlot ?? -1)) + 1;
       room.members.push(person);
       save(room);
       return send(201, { room: view(room, person.token), token: person.token });
@@ -237,6 +240,26 @@ export async function exchangeApi(request, response, url) {
     if (me < 0) reject("먼저 방에 참가해 주세요.", 403);
     const hostId = room.hostId ?? room.members[0].id;
     const isHost = room.members[me].id === hostId;
+    if (action === "leave") {
+      if (room.members.length === 1) {
+        if (input.deleteIfLast !== true) reject("마지막 참가자예요. 방과 기록 삭제를 확인해 주세요.", 409);
+        const remainingRooms = { ...rooms };
+        delete remainingRooms[code]; persist(remainingRooms);
+        return send(200, { deleted: true });
+      }
+      const snapshot = view(room, actingToken).members[me];
+      (room.departed ??= []).push({ ...snapshot, recordSlot: room.startedAt ? snapshot.recordSlot : null });
+      if (room.startedAt) room.members.forEach((person, i) => { person.recordSlot ??= i; });
+      const [leaver] = room.members.splice(me, 1);
+      if (isHost) room.hostId = room.members[0].id;
+      if (!room.completedAt && leaver.receivedAt && !leaver.finishedAt) {
+        const next = room.members.find(m => !m.receivedAt);
+        if (next) next.receivedAt = now;
+        else room.completedAt = now;
+      }
+      save(room);
+      return send(200, { deleted: false });
+    }
     if (action === "start") {
       if (!isHost) reject("방장만 시작할 수 있어요.", 403);
       if (room.startedAt) return send(200, view(room, token));

@@ -45,7 +45,7 @@ export function registerRecordSync(
     if (!room?.exchangeCode || !room.startedAt)
       fail(409, "EXCHANGE_NOT_STARTED");
     if (members[me].readingStatus === "WAITING") fail(403, "RECORDS_LOCKED");
-    return { members, me };
+    return { me: members[me].readingOrder - 1 };
   }
   const json = (op: any) => ({ ...op, sequence: String(op.sequence) });
   app.get<{ Params: { roomId: string }; Querystring: { after?: string } }>(
@@ -102,7 +102,7 @@ export function registerRecordSync(
           properties: {
             id: uuid,
             kind: { enum: kinds },
-            slot: { type: "integer", minimum: 0, maximum: 9 },
+            slot: { type: "integer", minimum: 0, maximum: 2147483646 },
             page: { type: "integer", minimum: 1, maximum: 99999 },
             postId: uuid,
             replyId: uuid,
@@ -118,8 +118,11 @@ export function registerRecordSync(
         roomId = req.params.roomId;
       return db.$transaction(async (tx) => {
         await tx.$queryRaw`SELECT id FROM "Room" WHERE id = ${roomId}::uuid FOR UPDATE`;
-        const { me, members } = await access(tx, roomId, uid);
-        if (body.slot >= members.length) fail(400, "INVALID_SLOT");
+        const { me } = await access(tx, roomId, uid);
+        if (body.slot !== me &&
+            !await tx.roomMember.findFirst({ where: { roomId, readingOrder: body.slot + 1 }, select: { userId: true } }) &&
+            !await tx.roomDeparture.findFirst({ where: { roomId, recordSlot: body.slot }, select: { id: true } }))
+          fail(400, "INVALID_SLOT");
         const previous = await tx.recordOperation.findUnique({
           where: { id: body.id },
         });

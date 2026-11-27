@@ -544,3 +544,20 @@ body.exchange .button.secondary:hover, body.reading-ui .button.secondary:hover {
 .public-room .exchange-book { min-width: 0; }
 .public-room .button { flex-shrink: 0; }
 .exchange-card label[hidden] { display: none; }
+
+.online-count:not([hidden]) { display: inline-flex; align-items: center; gap: 6px; color: var(--text); font-size: 13px; }
+.online-count::before { content: ""; flex: 0 0 8px; width: 8px; height: 8px; border-radius: 50%; background: #368156; }
+
+#exit-dialog { box-sizing: border-box; width: min(360px, calc(100% - 32px)); padding: 22px; }
+#exit-dialog .dialog-heading { display: grid; grid-template-columns: 34px 1fr 34px; align-items: center; }
+#exit-title { grid-column: 2; margin: 0; text-align: center; }
+#exit-close { width: 34px; height: 34px; border: 0; background: transparent; font: inherit; cursor: pointer; }
+.exit-actions { display: grid; gap: 8px; margin-top: 16px; }
+.exit-actions button { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 44px;
+  border-radius: 12px; padding: 8px 14px; font: inherit; font-weight: 700; cursor: pointer; }
+#exit-home { color: white; background: #a53532; border: 1px solid #892c29; }
+#exit-home:hover { background: #8b2927; }
+#exit-leave { color: #373737; background: transparent; border: 1px solid #999; }
+#exit-leave:hover { background: #eee; }
+#exit-question, #exit-status { margin: 12px 0 0; text-align: center; }
+#exit-status:empty { display: none; }

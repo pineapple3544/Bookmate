@@ -10,6 +10,7 @@ import {
   isTombstone,
 } from "./record-protocol.js";
 export function createSharedRecords(room) {
+  const recordSlot = room.members[room.me].recordSlot ?? room.me;
   const path = `/api/v1/rooms/${room.id}/record-ops`,
     meta = new Map(),
     available = new Set(),
@@ -169,7 +170,7 @@ export function createSharedRecords(room) {
 
   function registered(header) {
     const m = meta.get(header.id);
-    return m?.actorSlot === room.me && m.kind === header.kind &&
+    return m?.actorSlot === recordSlot && m.kind === header.kind &&
       m.slot === header.slot && m.page === header.page &&
       (m.postId ?? null) === (header.postId ?? null) &&
       (m.replyId ?? null) === (header.replyId ?? null) &&
@@ -236,7 +237,7 @@ export function createSharedRecords(room) {
           ? { replyId: value.replyId }
           : {}),
     };
-    validateBody({ ...header, actorSlot: room.me }, decodeBody(body));
+    validateBody({ ...header, actorSlot: recordSlot }, decodeBody(body));
     // A caller can retry while recovery is finishing. An identical staged
     // operation already has a durable ID and has just been acknowledged.
     if (recovered.some((pending) => pending.kind === method && pending.digest === header.digest))
@@ -261,7 +262,7 @@ export function createSharedRecords(room) {
     const keys = await storage("records", "getAllKeys");
     for (const key of keys) {
       if (stopped) return;
-      if (key[0] !== room.me) continue;
+      if (key[0] !== recordSlot) continue;
       const id = "legacy:" + key.join(":");
       let progress = await storage("recordImports", "get", id);
       if (progress?.done || (progress && !Object.hasOwn(progress, "done")))
@@ -333,7 +334,7 @@ export function createSharedRecords(room) {
         for (const layer of record.annotations ?? [])
           await ensure("annotate", { key, postId: progress.postId, layer });
         for (const [index, reply] of (record.replies ?? []).entries())
-          if (reply.slot === room.me)
+          if (reply.slot === recordSlot)
             await ensure("reply", {
               key,
               postId: progress.postId,
@@ -350,7 +351,7 @@ export function createSharedRecords(room) {
       await enqueue(recover);
       if (navigator.locks)
         await navigator.locks.request(
-          "bookmate-import:" + room.id + ":" + room.me,
+          "bookmate-import:" + room.id + ":" + recordSlot,
           migratePageRecords,
         );
       else await migratePageRecords();

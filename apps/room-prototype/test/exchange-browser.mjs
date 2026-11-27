@@ -126,7 +126,8 @@ try {
   const publicJoin = page => page.request.post(base + listing + "/" + room.id + "/join", {data:{}, headers:{origin:base}});
   const publicCard = b.locator(".public-room").filter({has:button(b)});
   await button(b).waitFor();
-  assert.ok((await publicCard.innerText()).includes("1명 온라인"));
+  assert.equal(await publicCard.locator(".online-count").innerText(), "1명 온라인");
+  assert.doesNotMatch(await publicCard.innerText(), /참가 \d+\/\d+/);
   assert.ok(!JSON.stringify(await discover(b)).includes(code));
   assert.equal((await b.request.get(base + await publicCard.locator("img").getAttribute("src"))).status(), 200);
   // A second tab belongs to the same reader. Closing just one must leave the room listed.
@@ -354,6 +355,41 @@ try {
     { data:{}, headers:{origin:base} })));
   assert.deepEqual(race.map(r => r.status()).sort(), [200, 409]);
   assert.ok(!(await discover(c)).some(r => r.id === small.id), "full room with an online host");
+  const homeTab = await outsider.context().newPage();
+  await homeTab.goto(base);
+  const online = homeTab.locator('[data-room-online="' + small.code + '"]');
+  await homeTab.waitForFunction(code => document.querySelector('[data-room-online="' + code + '"]')?.textContent === "1명 온라인", small.code);
+  const dot = await online.evaluate(el => {
+    const style = getComputedStyle(el, "::before");
+    return [style.backgroundColor, style.borderRadius, style.width, getComputedStyle(el).color];
+  });
+  assert.deepEqual(dot, ["rgb(54, 129, 86)", "50%", "8px", "rgb(73, 51, 38)"]);
+  await outsider.goto(base + "/?screen=create");
+  await outsider.locator('#create-form [name="title"]').fill("문 테스트");
+  await outsider.locator('#create-form [type="submit"]').click();
+  await outsider.waitForURL("**/room.html?**");
+  const soloCode = new URL(outsider.url()).searchParams.get("code");
+  const door = outsider.locator('.interaction-focus[data-target="door"]');
+  await door.waitFor();
+  await outsider.keyboard.press("e");
+  await outsider.locator("#exit-dialog[open]").waitFor();
+  await outsider.locator("#exit-home").click();
+  await outsider.waitForURL(base + "/");
+  const soloLabel = outsider.locator('[data-room-online="' + soloCode + '"]');
+  await soloLabel.waitFor();
+  assert.equal(await soloLabel.textContent(), "0명 온라인");
+  await soloLabel.click();
+  await door.waitFor();
+  await outsider.locator("#interact").click();
+  await outsider.locator("#exit-leave").click();
+  assert.match(await outsider.locator("#exit-question").innerText(), /마지막 참가자/);
+  await outsider.locator("#exit-home").click();
+  await outsider.locator("#exit-leave").click();
+  await outsider.getByRole("button", {name:"방과 기록 삭제"}).click();
+  await outsider.waitForURL(base + "/");
+  await outsider.locator('[data-room-online="' + small.code + '"]').waitFor();
+  assert.equal(await soloLabel.count(), 0);
+  await homeTab.close();
   assert.deepEqual(errors, []);
   assert.deepEqual(legacyCalls, []);
   console.log(
