@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Bookmate · 교환독서</title>
+  <title>Bookmate / 교환독서</title>
   <link rel="stylesheet" href="./room.css">
   <link rel="stylesheet" href="./exchange.css">
 </head>
@@ -24,6 +24,11 @@
       </form>
       <h2>내 독서방</h2>
       <div id="room-list" class="exchange-list"></div>
+      <section id="public-rooms" aria-labelledby="public-title" hidden>
+        <h2 id="public-title">공개방</h2>
+        <div id="public-list" class="exchange-list"></div>
+        <p id="public-status" class="muted" role="status"></p>
+      </section>
     </section>
     <section id="create-view" hidden>
       <div class="exchange-heading"><h1>방 만들기</h1></div>
@@ -41,6 +46,7 @@
         <p id="cover-message" role="status"></p>
         <label>책 제목<input name="title" required maxlength="80"></label>
         <label>저자<input name="author" maxlength="50"></label>
+        <label id="create-visibility" hidden>방 공개 설정<select name="visibility" disabled><option value="PRIVATE">비공개</option><option value="PUBLIC">공개</option></select></label>
         <label>참여 인원<select name="capacity"><option value="2">2명</option><option value="3">3명</option><option value="4">4명</option><option value="5">5명</option><option value="6">6명</option><option value="7">7명</option><option value="8">8명</option><option value="9">9명</option><option value="10">10명</option></select></label>
         <fieldset class="theme-field"><legend>책 표지 색</legend><div id="theme-options"></div></fieldset>
         <button type="submit" class="button primary">방 만들고 초대하기</button>
@@ -50,6 +56,7 @@
       <div id="waiting-book" class="exchange-heading"></div>
       <div class="exchange-card" id="invite-panel" hidden>
         <h2>친구 초대</h2>
+        <label id="manage-visibility" hidden>방 공개 설정<select id="visibility-select"><option value="PRIVATE">비공개</option><option value="PUBLIC">공개</option></select></label>
         <div class="invite-code-row"><span>초대 코드</span><button id="copy-code" type="button" aria-label="초대 코드 복사"><code id="show-code"></code></button></div>
         <div class="invite-link-row"><input id="invite-link" aria-label="초대 링크" readonly><button id="copy-invite" type="button" class="button secondary">링크 복사</button></div>
         <button id="share-invite" type="button" class="button primary">공유하기</button>
@@ -124,7 +131,7 @@
   <div id="save-toast" role="status" aria-atomic="true"></div>
   <nav class="bookmate-nav" aria-label="주 메뉴">
     <a href="/" data-screen="home"><span aria-hidden="true">⌂</span>홈</a>
-    <a href="/?screen=create" data-screen="create"><span aria-hidden="true">＋</span>방 만들기</a>
+    <a href="/?screen=create" data-screen="create"><span aria-hidden="true">+</span>방 만들기</a>
     <a href="/?screen=shelf" data-screen="shelf"><span aria-hidden="true">▥</span>내 서재</a>
     <a href="/?screen=profile" data-screen="profile"><span aria-hidden="true" class="profile-icon"></span>프로필</a>
   </nav>

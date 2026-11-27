@@ -433,6 +433,11 @@ export function registerRealtime(
     }
   });
   return {
+    roomIds: () => Array.from(rooms.keys()),
+    onlineCount(id: string) {
+      const peers = rooms.get(id)?.peers;
+      return peers ? new Set([...peers].filter(live).map(peer => peer.uid)).size : 0;
+    },
     remove(id: string, uid?: string) {
       const state = rooms.get(id);
       if (!state) return;

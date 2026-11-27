@@ -113,7 +113,7 @@ export async function registerCore(
       fail(403, "ORIGIN_DENIED");
   });
   const realtime = registerRealtime(app, db, authenticatedSession, origins);
-  registerExchanges(app, db, userId);
+  registerExchanges(app, db, userId, realtime);
   registerRecordSync(app, db, userId);
   const credentials = object(
     {
@@ -291,7 +291,7 @@ export async function registerCore(
       const rooms = await db.room.findMany({
         where: {
           ...(req.query.scope === "public"
-            ? { visibility: "PUBLIC" as const }
+            ? { visibility: "PUBLIC" as const, exchangeCode: null }
             : { members: { some: { userId: uid } } }),
           ...(req.query.q
             ? { title: { contains: req.query.q, mode: "insensitive" as const } }

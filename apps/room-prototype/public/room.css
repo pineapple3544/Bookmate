@@ -285,7 +285,7 @@ canvas {
   min-height: calc(100svh - 64px);
 }
 #room-access:not([hidden]) { display: flex; flex-wrap: wrap; gap: 6px; }
-#room-access > * { flex: 1 1 auto; }
+#room-access > * { flex: 1 1 auto; display: inline-flex; align-items: center; justify-content: center; text-align: center; text-decoration: none; }
 #room-access [hidden] { display: none; }
 .book-detail {
   display: flex;

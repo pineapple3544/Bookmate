@@ -1,5 +1,5 @@
 import { coverEditor, showCover } from "./cover-editor.js";
-import { serverMode, serverAvailable, localExchangeAvailable, ensureAccount, account } from "./account.js";
+import { serverMode, serverAvailable, localExchangeAvailable, ensureAccount, account, apiRequest } from "./account.js";
 import { exchangeCode as code, exchangeRequest, exchangeUrl, myExchanges, getDefaultAppearance, saveDefaultAppearance, themes } from "./exchange-client.js";
 import { drawAvatar, normalizeAppearance } from "./avatar.js";
 import { myProfile, renderBooks, saveProfile } from "./profile.js";
@@ -48,7 +48,7 @@ function book(room, subtitle) {
     showCover(cover, room.coverUrl);
   }
   const details = node("div");
-  details.append(node("h2", room.title), node("p", [room.author, subtitle].filter(Boolean).join(" · "), "muted"));
+  details.append(node("h2", room.title), node("p", [room.author, subtitle].filter(Boolean).join(" / "), "muted"));
   wrap.append(cover, details);
   return wrap;
 }
@@ -83,8 +83,63 @@ function enterNewRoom(room) {
   sessionStorage.setItem("bookmate-entry:" + room.code, room.members[room.me].id);
   location.href = pixelRoom(room.code);
 }
+function publicRooms() {
+  const list = $("#public-list"), feedback = $("#public-status");
+  $("#public-rooms").hidden = false;
+  let loading = false, joining = false, rendered;
+  async function refresh() {
+    if (loading || joining || document.hidden) return;
+    loading = true;
+    try {
+      const { rooms } = await apiRequest("/api/v1/exchanges/public");
+      if (joining) return;
+      const signature = JSON.stringify(rooms);
+      if (signature !== rendered) {
+        const focused = document.activeElement?.dataset.joinRoom;
+        list.replaceChildren(...rooms.map(room => {
+          const row = node("div", "", "exchange-card public-room");
+          const subtitle = room.online + "명 온라인 / 참가 " + room.joined + "/" + room.capacity;
+          const button = node("button", "참가하기", "button secondary");
+          button.type = "button";
+          button.dataset.joinRoom = room.id;
+          button.setAttribute("aria-label", room.title + " 참가하기");
+          row.append(book(room, subtitle), button);
+          return row;
+        }));
+        if (focused) list.querySelector('[data-join-room="' + focused + '"]')?.focus({ preventScroll: true });
+        rendered = signature;
+      }
+      feedback.textContent = rooms.length ? "" : "지금 참가할 수 있는 공개방이 없어요.";
+    } catch {
+      list.replaceChildren(); rendered = undefined;
+      feedback.textContent = "공개방을 불러오지 못했어요.";
+    } finally { loading = false; }
+  }
+  list.onclick = async event => {
+    const button = event.target.closest("button[data-join-room]");
+    if (!button || joining) return;
+    joining = true; button.disabled = true;
+    try {
+      const { room } = await apiRequest("/api/v1/exchanges/public/" + button.dataset.joinRoom + "/join", "POST", {});
+      enterNewRoom(room);
+    } catch (error) {
+      joining = false; button.disabled = false;
+      status.textContent = error.message;
+      void refresh();
+    }
+  };
+  void refresh();
+  const timer = setInterval(refresh, 4000);
+  document.addEventListener("visibilitychange", refresh);
+  addEventListener("pagehide", event => {
+    if (event.persisted) return;
+    clearInterval(timer); document.removeEventListener("visibilitychange", refresh);
+  });
+  addEventListener("pageshow", () => { joining = false; rendered = undefined; void refresh(); });
+}
 async function home() {
   $("#home-view").hidden = false;
+  if (serverMode) publicRooms();
   form("#code-form", ({ code }) => { location.href = exchangeUrl(code.trim().toUpperCase()); });
   const list = $("#room-list");
   const results = await Promise.allSettled((await myExchanges()).map(code => exchangeRequest(code)));
@@ -132,7 +187,7 @@ function waiting(initial) {
     const handle = node("button", "☰", "member-drag");
     handle.type = "button";
     handle.setAttribute("aria-label", room.members[index].name + " 순서 이동");
-    handle.title = "드래그하거나 위·아래 방향키로 이동";
+    handle.title = "드래그하거나 위아래 방향키로 이동";
     handle.onkeydown = event => {
       const offset = { ArrowUp: -1, ArrowDown: 1 }[event.key];
       if (!offset) return;
@@ -189,7 +244,7 @@ function waiting(initial) {
   }, settingsStatus);
   const invite = new URL(exchangeUrl(code), location.origin).href;
   if (serverAvailable && !serverMode) {
-    $("#invite-status").textContent = "로컬 체험방입니다. 다른 브라우저와 함께하려면 ‘방 만들기’를 선택하세요.";
+    $("#invite-status").textContent = "로컬 체험방입니다. 다른 브라우저와 함께하려면 방 만들기를 선택하세요.";
   }
   $("#invite-link").value = invite;
   $("#show-code").textContent = code;
@@ -224,12 +279,25 @@ function waiting(initial) {
     try { await navigator.share({ title: initial.title + " 교환독서", url: invite }); }
     catch (error) { if (error.name !== "AbortError") await copyInvite(); }
   };
+  const visibility = $("#visibility-select");
+  visibility.onchange = async () => {
+    visibility.disabled = true;
+    try {
+      await changeRoom("visibility", { visibility: visibility.value });
+      notifySaved("공개 설정을 저장했어요.");
+    } catch (error) {
+      visibility.value = renderedRoom.visibility;
+      status.textContent = error.message;
+    } finally { visibility.disabled = false; }
+  };
   form("#join-form", async data => enterNewRoom(await exchangeRequest(code, "join", data)));
   function render(room) {
     if (JSON.stringify(renderedRoom) === JSON.stringify(room)) return;
     renderedRoom = room;
     $("#waiting-book").replaceChildren(book(room, "독서방"));
     $("#invite-panel").hidden = room.me < 0;
+    $("#manage-visibility").hidden = !serverMode || !room.isHost || Boolean(room.completedAt);
+    visibility.value = room.visibility ?? "PRIVATE";
     $("#join-form").hidden = room.me >= 0 || room.completedAt || room.members.length >= room.capacity;
     $("#waiting-count").textContent = "참가자 " + room.members.length + "/" + room.capacity;
     roster.replaceChildren(...room.members.map((person, index) => {
@@ -306,7 +374,7 @@ function history(room) {
     drawAvatar(face.getContext("2d"), 10, 24, index, normalizeAppearance(person.appearance), { scale: 2 });
     heading.append(face, node("h3", person.name));
     const dates = node("p", "", "reader-dates");
-    dates.append(node("span", date(person.receivedAt) + " → " + date(person.finishedAt)),
+    dates.append(node("span", date(person.receivedAt) + " - " + date(person.finishedAt)),
       node("span", "독서 기간 " + duration(person), "duration-chip"));
     const stars = node("p", "", "reader-stars");
     stars.append(ratingStars(person.rating));
@@ -388,7 +456,7 @@ async function ticket(room) {
     const rows = lines(value, width, size, family);
     ctx.fillStyle = fill;
     for (const [i, row] of rows.slice(0, limit).entries()) {
-      ctx.fillText(row + (i === limit - 1 && rows.length > limit ? "…" : ""), x, y + i * size * 1.3, width);
+      ctx.fillText(row + (i === limit - 1 && rows.length > limit ? "..." : ""), x, y + i * size * 1.3, width);
     }
   }
   text(room.title, 84, room.coverUrl ? 190 : 108, room.coverUrl ? 17 : 21, 122, room.coverUrl ? 2 : 4, "#f3e7cf", "serif");
@@ -411,7 +479,7 @@ async function ticket(room) {
   }
   ctx.globalCompositeOperation = "source-over";
   text("READERS", 59, 353, 21, 520, 1, muted);
-  text(room.members.map(person => person.name).join(" · "), 59, 392, 20, 610, 5);
+  text(room.members.map(person => person.name).join(" / "), 59, 392, 20, 610, 5);
   text("COMPLETED", 707, 353, 21, 195, 1, muted);
   text(date(room.completedAt), 707, 392, 23, 195, 1);
   $("#ticket-download").onclick = () => canvas.toBlob(blob => {
@@ -566,6 +634,8 @@ async function profileView() {
 
 function createRoom() {
   $("#create-view").hidden = false;
+  $("#create-visibility").hidden = !serverMode;
+  $("#create-visibility select").disabled = !serverMode;
   const cover = setupRoomOptions($("#create-form"));
   form("#create-form", async data => { enterNewRoom(await exchangeRequest("", "", { ...data, ...cover.payload() })); });
 }

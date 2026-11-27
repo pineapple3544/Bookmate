@@ -88,6 +88,9 @@ try {
   await a.mouse.down(); await a.mouse.move(boundsCover.x + boundsCover.width - 5, boundsCover.y + 50); await a.mouse.up();
   const sample = await preview.locator("canvas").evaluate(el => [...el.getContext("2d").getImageData(120, 30, 1, 1).data]);
   assert.deepEqual(sample, [34,187,102,255]);
+  const visibility = a.locator('#create-form [name="visibility"]');
+  assert.equal(await visibility.inputValue(), "PRIVATE");
+  await visibility.selectOption("PUBLIC");
   await a.locator('#create-form [name="capacity"]').selectOption("4");
   await a.locator('#create-form [type="submit"]').click();
   await a.waitForURL(/code=[A-F0-9]{8}/);
@@ -104,7 +107,46 @@ try {
   await a.locator(".room-card img").waitFor();
   assert.equal(await a.locator(".room-card img").getAttribute("src"), coverUrl);
   await a.locator(".room-card").click();
-  const b = await actor(2, "/?code=" + code);
+  for (const width of [390, 1280]) {
+    await a.setViewportSize({ width, height: 900 });
+    const centered = await a.locator("#invite-manage").evaluate(el => {
+      const range = document.createRange(); range.selectNodeContents(el);
+      const text = range.getBoundingClientRect(), box = el.getBoundingClientRect();
+      return [Math.abs(text.left + text.width / 2 - box.left - box.width / 2),
+        Math.abs(text.top + text.height / 2 - box.top - box.height / 2)];
+    });
+    assert.ok(centered.every(offset => offset <= 2), "center invite label at " + width + ": " + centered);
+    assert.equal(await a.locator("#invite-manage").textContent(), "초대 / 방 관리");
+  }
+  const b = await actor(2);
+  const room = (await (await a.request.get(base + "/api/v1/exchanges/" + code)).json()).room;
+  const listing = "/api/v1/exchanges/public";
+  const button = page => page.locator('[data-join-room="' + room.id + '"]');
+  const discover = async page => (await (await page.request.get(base + listing)).json()).rooms;
+  const publicJoin = page => page.request.post(base + listing + "/" + room.id + "/join", {data:{}, headers:{origin:base}});
+  const publicCard = b.locator(".public-room").filter({has:button(b)});
+  await button(b).waitFor();
+  assert.ok((await publicCard.innerText()).includes("1명 온라인"));
+  assert.ok(!JSON.stringify(await discover(b)).includes(code));
+  assert.equal((await b.request.get(base + await publicCard.locator("img").getAttribute("src"))).status(), 200);
+  // A second tab belongs to the same reader. Closing just one must leave the room listed.
+  const extra = await a.context().newPage();
+  await extra.goto(base + "/room.html?code=" + code);
+  await extra.waitForFunction(() => document.querySelector(".room-count").textContent === "1명 온라인");
+  assert.equal((await discover(b)).find(r => r.id === room.id).online, 1);
+  await extra.close();
+  await a.locator("#invite-manage").click();
+  await button(b).waitFor({state:"detached"});
+  assert.equal((await publicJoin(b)).status(), 409);
+  await a.getByRole("link", {name:"독서방 입장", exact:true}).click();
+  await button(b).waitFor();
+  await a.locator("#invite-manage").click();
+  await a.selectOption("#visibility-select", "PRIVATE");
+  await a.waitForFunction(() => !document.querySelector("#visibility-select").disabled);
+  await a.getByRole("link", {name:"독서방 입장", exact:true}).click();
+  await a.waitForFunction(() => document.querySelector(".room-count").textContent === "1명 온라인");
+  assert.equal((await publicJoin(b)).status(), 409);
+  await b.goto(base + "/?code=" + code);
   await b.locator("#join-form").waitFor();
   assert.equal(await b.locator('#join-form [name="name"]').count(), 0);
   await b.goto(base + "/");
@@ -230,10 +272,16 @@ try {
     }
     requestAnimationFrame(sample);
   }
-  const c = await actor(3, "/?code=" + code);
+  // A host can publish a room even after reading starts.
+  await a.locator("#invite-manage").click();
+  await a.selectOption("#visibility-select", "PUBLIC");
+  await a.waitForFunction(() => !document.querySelector("#visibility-select").disabled);
+  await a.getByRole("link", {name:"독서방 입장", exact:true}).click();
+  const c = await actor(3);
+  await button(c).waitFor();
   await a.evaluate(watchDoor);
   await c.addInitScript(watchDoor);
-  await c.locator("#join-form button").click();
+  await button(c).click();
   await c.waitForURL(/room\.html/);
   for (const page of [a, c]) {
     await page.waitForFunction(() => window.entryPixels?.has("35,44,41") && window.entrySteps.size >= 4);
@@ -242,9 +290,15 @@ try {
   assert.equal(await a.locator(".member-name").last().textContent(), "사용자 3");
   assert.equal(await a.locator("#holder").textContent(), "사용자 2");
   await b.waitForFunction(() => document.querySelector(".room-count").textContent === "3명 온라인");
+  const outsider = await actor(4);
+  assert.ok((await discover(outsider)).some(r => r.id === room.id), "one remaining seat before completion");
+  assert.equal((await b.request.post(base + "/api/v1/exchanges/" + code + "/visibility",
+    { data:{visibility:"PRIVATE"}, headers:{origin:base} })).status(), 403);
   await finish(b, 5, "임시 문구5");
   await c.locator("#complete").waitFor();
   await finish(c, 4, "마지막 독자");
+  assert.ok(!(await discover(outsider)).some(r => r.id === room.id), "completed with a spare seat");
+  assert.equal((await publicJoin(outsider)).status(), 409);
   await a.goto(base + "/?screen=shelf");
   await a.locator(".shelf-book").click();
   assert.equal(await a.locator("#shelf-cover img").getAttribute("src"), coverUrl);
@@ -290,10 +344,20 @@ try {
   }), "login button stays visible on hover");
   await login.click();
   await a.locator("#account-dialog").waitFor({state:"detached"});
+  // Two strangers tap the same final public seat. Only one membership is created.
+  const small = (await (await outsider.request.post(base + "/api/v1/exchanges", {
+    data: { title: "한 자리", capacity: 2, visibility: "PUBLIC" }, headers: { origin: base },
+  })).json()).room;
+  await outsider.goto(base + "/room.html?code=" + small.code);
+  await outsider.waitForFunction(() => document.querySelector(".room-count").textContent === "1명 온라인");
+  const race = await Promise.all([a, b].map(page => page.request.post(base + listing + "/" + small.id + "/join",
+    { data:{}, headers:{origin:base} })));
+  assert.deepEqual(race.map(r => r.status()).sort(), [200, 409]);
+  assert.ok(!(await discover(c)).some(r => r.id === small.id), "full room with an online host");
   assert.deepEqual(errors, []);
   assert.deepEqual(legacyCalls, []);
   console.log(
-    "PASS UI: three real accounts, door entry, late join, create/join/reorder/start, cross-context chat/presence/movement, finish/transfer, shelf/review/history/PNG, reload/logout, mobile layout",
+    "PASS UI: four accounts, public directory, visibility, offline/full/completed rejection, final-seat race, centered desktop/mobile controls, door entry, late join, create/join/reorder/start, cross-context chat/presence/movement, finish/transfer, shelf/review/history/PNG, reload/logout, mobile layout",
   );
 } finally {
   for (const context of contexts) await context.close();

@@ -537,3 +537,10 @@ body.exchange .button.secondary:hover, body.reading-ui .button.secondary:hover {
 .preview-book.croppable { cursor: grab; touch-action: none; user-select: none; }
 .preview-book.croppable:active { cursor: grabbing; }
 #shelf-cover { margin-block: 12px 18px; }
+
+#public-rooms { margin-top: 24px; }
+#public-status:empty { display: none; }
+.public-room { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.public-room .exchange-book { min-width: 0; }
+.public-room .button { flex-shrink: 0; }
+.exchange-card label[hidden] { display: none; }

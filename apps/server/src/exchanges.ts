@@ -43,6 +43,7 @@ function view(room: any, uid: string) {
     author: room.author,
     theme: room.theme,
     coverUrl: room.cover ? "/api/v1/exchanges/" + room.exchangeCode + "/covers/" + room.cover.hash : null,
+    visibility: room.visibility,
     capacity: room.maxMembers,
     createdAt: room.createdAt,
     startedAt: room.startedAt,
@@ -69,6 +70,7 @@ export function registerExchanges(
   app: FastifyInstance,
   db: PrismaClient,
   authenticate: (req: FastifyRequest) => Promise<string>,
+  presence: { roomIds(): string[]; onlineCount(id: string): number },
 ) {
   async function load(tx: Tx, code: string, lock = false) {
     if (lock)
@@ -80,6 +82,67 @@ export function registerExchanges(
     if (!room) return fail(404, "방을 찾을 수 없어요.");
     return room;
   }
+  async function join(tx: Tx, room: Awaited<ReturnType<typeof load>>, uid: string) {
+    if (room.members.some(person => person.userId === uid)) return view(room, uid);
+    if (room.completedAt || room.members.length >= room.maxMembers)
+      fail(409, "완독했거나 인원이 찬 방이에요.");
+    await tx.roomMember.create({
+      data: { roomId: room.id, userId: uid, appearance: await inheritedAppearance(tx, uid),
+        readingOrder: (room.members.at(-1)?.readingOrder ?? 0) + 1 },
+    });
+    const updated = await tx.room.update({ where: { id: room.id }, data: { version: { increment: 1 } }, include: included });
+    return view(updated, uid);
+  }
+
+  app.get("/api/v1/exchanges/public", async req => {
+    const uid = await authenticate(req);
+    const ids = presence.roomIds();
+    if (!ids.length) return { rooms: [] };
+    const rows = await db.room.findMany({
+      where: { id: { in: ids }, visibility: "PUBLIC", exchangeCode: { not: null },
+        completedAt: null, members: { none: { userId: uid } } },
+      select: { id: true, bookTitle: true, author: true, theme: true, maxMembers: true,
+        cover: { select: { hash: true } }, _count: { select: { members: true } } },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    });
+    return { rooms: rows.flatMap(room => {
+      const online = presence.onlineCount(room.id);
+      if (!online || room._count.members >= room.maxMembers) return [];
+      return [{ id: room.id, title: room.bookTitle, author: room.author, theme: room.theme,
+        coverUrl: room.cover ? "/api/v1/exchanges/public/" + room.id + "/covers/" + room.cover.hash : null,
+        online, joined: room._count.members, capacity: room.maxMembers }];
+    }) };
+  });
+  const publicId = { type: "string", format: "uuid" };
+  app.get<{ Params: { id: string; hash: string } }>("/api/v1/exchanges/public/:id/covers/:hash",
+    { schema: { params: { type: "object", properties: { id: publicId, hash: { type: "string", pattern: "^[a-f0-9]{64}$" } } } } },
+    async (req, reply) => {
+      await authenticate(req);
+      const { id, hash } = req.params;
+      if (!presence.onlineCount(id)) return reply.code(404).send();
+      const room = await db.room.findFirst({ where: { id, visibility: "PUBLIC", completedAt: null,
+        exchangeCode: { not: null }, cover: { is: { hash } } },
+        select: { cover: { select: { image: true } }, _count: { select: { members: true } }, maxMembers: true } });
+      if (!room?.cover || room._count.members >= room.maxMembers) return reply.code(404).send();
+      return reply.type("image/png").header("Cache-Control", "private, no-store")
+        .header("X-Content-Type-Options", "nosniff").send(Buffer.from(room.cover.image));
+    });
+  app.post<{ Params: { id: string } }>("/api/v1/exchanges/public/:id/join",
+    { schema: { params: { type: "object", properties: { id: publicId } } } }, async req => {
+      const uid = await authenticate(req);
+      const room = await db.$transaction(async tx => {
+        const { id } = req.params;
+        await tx.$queryRaw`SELECT id FROM "Room" WHERE id = ${id}::uuid FOR UPDATE`;
+        const room = await tx.room.findUnique({ where: { id }, include: included });
+        if (!room?.exchangeCode) return fail(404, "참가할 수 없는 방이에요.");
+        if (!room.members.some(person => person.userId === uid) &&
+            (room.visibility !== "PUBLIC" || !presence.onlineCount(id)))
+          return fail(409, "현재 공개 목록에서 참가할 수 없는 방이에요.");
+        return join(tx, room, uid);
+      });
+      return { room };
+    });
+
   const options = (input: any, minimum = 2) => {
     const title = clean(input.title, 80),
       author = clean(input.author, 50),
@@ -141,6 +204,7 @@ export function registerExchanges(
           type: "object",
           required: ["title", "capacity"],
           properties: {
+            visibility: { enum: ["PUBLIC", "PRIVATE"] },
             coverPixels: { type: ["string", "null"] },
             title: { type: "string", maxLength: 80 },
             author: { type: "string", maxLength: 50 },
@@ -161,6 +225,7 @@ export function registerExchanges(
           data: {
             title: o.title,
             bookTitle: o.title,
+            visibility: req.body.visibility ?? "PRIVATE",
             ...(cover ? { cover: { create: cover } } : {}),
             author: o.author,
             theme: o.theme,
@@ -229,6 +294,7 @@ export function registerExchanges(
                 "join",
                 "start",
                 "settings",
+                "visibility",
                 "order",
                 "appearance",
                 "finish",
@@ -239,7 +305,7 @@ export function registerExchanges(
         },
         body: {
           type: "object",
-          properties: { ...appearanceSchema.properties, appearance: appearanceSchema },
+          properties: { ...appearanceSchema.properties, appearance: appearanceSchema, visibility: { enum: ["PUBLIC", "PRIVATE"] } },
         },
       },
     },
@@ -253,21 +319,11 @@ export function registerExchanges(
         const me = members.findIndex((m) => m.userId === uid),
           person = members[me];
         if (action === "join") {
-          if (person) return view(room, uid);
-          if (room.completedAt || members.length >= room.maxMembers)
-            fail(409, "완독했거나 인원이 찬 방이에요.");
-          await tx.roomMember.create({
-            data: {
-              roomId: room.id,
-              userId: uid,
-              appearance: await inheritedAppearance(tx, uid),
-              readingOrder: (members.at(-1)?.readingOrder ?? 0) + 1,
-            },
-          });
+          return join(tx, room, uid);
         } else {
           if (!person) return fail(403, "먼저 방에 참가해 주세요.");
           if (
-            ["start", "settings", "order"].includes(action) &&
+            ["start", "settings", "order", "visibility"].includes(action) &&
             room.exchangeOwnerId !== uid
           )
             fail(403, "방장만 변경할 수 있어요.");
@@ -285,6 +341,9 @@ export function registerExchanges(
               },
               data: { readingStatus: "READING", readingStartedAt: new Date() },
             });
+          } else if (action === "visibility") {
+            if (!input.visibility || room.completedAt) fail(409, "공개 설정을 변경할 수 없어요.");
+            await tx.room.update({ where: { id: room.id }, data: { visibility: input.visibility } });
           } else if (action === "settings") {
             if (room.startedAt)
               fail(409, "교환독서를 시작한 뒤에는 방 옵션을 수정할 수 없어요.");

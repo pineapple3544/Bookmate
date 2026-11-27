@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>독서방 · Bookmate</title>
+    <title>독서방 / Bookmate</title>
     <link rel="stylesheet" href="./room.css" />
     <link rel="stylesheet" href="./exchange.css" />
   </head>
@@ -214,7 +214,7 @@
           <div id="members"></div>
         </section>
         <div id="room-access" hidden>
-          <a id="invite-manage" class="button secondary">초대 · 방 관리</a>
+          <a id="invite-manage" class="button secondary">초대 / 방 관리</a>
           <button id="start-exchange" class="button primary" type="button" hidden>교환독서 시작</button>
         </div>
         <button id="complete" class="button primary completion">
@@ -223,7 +223,7 @@
       </aside>
     </main>
     <dialog id="record-feed" aria-label="페이지 코멘트">
-      <button type="button" class="icon-button close record-book-close" aria-label="닫기">×</button>
+      <button type="button" class="icon-button close record-book-close" aria-label="닫기">x</button>
       <p id="feed-status" role="status"></p>
       <p id="record-toast" role="status" aria-atomic="true"></p>
       <div class="record-spread">
@@ -294,14 +294,14 @@
             <canvas width="400" height="180" aria-label="게시물 그림"></canvas>
             <button type="button" data-clear class="button secondary">그림 지우기</button>
           </div>
-          <button id="record-delete-note" type="button" class="button secondary" hidden>글·그림 삭제</button>
+          <button id="record-delete-note" type="button" class="button secondary" hidden>글/그림 삭제</button>
           <button type="submit" class="button primary">게시하기</button>
         </form>
         <p id="record-status" role="status"></p>
         <template id="record-reply-template">
           <form class="record-reply">
             <div class="reply-compose">
-              <button id="reply-attach" class="button secondary" type="button" aria-label="첨부 옵션" aria-expanded="false" aria-controls="reply-options">＋</button>
+              <button id="reply-attach" class="button secondary" type="button" aria-label="첨부 옵션" aria-expanded="false" aria-controls="reply-options">+</button>
               <input id="reply-photo" type="file" accept="image/jpeg,image/png,image/webp,image/avif,image/gif,image/bmp" hidden />
               <textarea id="reply-text" maxlength="1000" rows="1" aria-label="댓글" placeholder="댓글을 남겨 보세요"></textarea>
               <button class="button primary" type="submit" aria-label="댓글 보내기">↑</button>
@@ -383,7 +383,7 @@
     </dialog>
     <nav class="bookmate-nav" aria-label="주 메뉴">
       <a href="/"><span aria-hidden="true">⌂</span>홈</a>
-      <a href="/?screen=create"><span aria-hidden="true">＋</span>방 만들기</a>
+      <a href="/?screen=create"><span aria-hidden="true">+</span>방 만들기</a>
       <a href="/?screen=shelf"><span aria-hidden="true">▥</span>내 서재</a>
       <a href="/?screen=profile"><span aria-hidden="true" class="profile-icon"></span>프로필</a>
     </nav>

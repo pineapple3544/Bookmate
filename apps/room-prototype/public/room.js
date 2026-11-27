@@ -655,7 +655,7 @@ function avatarLabel(index) {
 const avatarLabels = state.users.map((_, index) => avatarLabel(index));
 const readingBadge = document.createElement("span");
 readingBadge.className = "reading-badge";
-readingBadge.textContent = "독서중…";
+readingBadge.textContent = "독서 중...";
 function petLabel() {
   const label = document.createElement("span");
   label.className = "pet-book-label";
@@ -713,7 +713,7 @@ function syncInteractionFocus() {
       height: bounds.height / canvas.height * 100 + "%",
     });
     focusMark.dataset.target = typeof next === "string" ? next : "chair-" + next;
-    actionName += " · " + (isPlayer ? peerName + " 프로필 보기" : isWardrobe ? "캐릭터 꾸미기" : seated ? "일어나기" : "의자에 앉기");
+    actionName += " / " + (isPlayer ? peerName + " 프로필 보기" : isWardrobe ? "캐릭터 꾸미기" : seated ? "일어나기" : "의자에 앉기");
   } else {
     delete focusMark.dataset.target;
   }
@@ -911,7 +911,7 @@ function update() {
   if (exchange) {
     $("#room-access").hidden = false;
     $("#invite-manage").href = exchangeUrl(exchangeCode);
-    $("#invite-manage").textContent = exchange.isHost ? "초대 · 방 관리" : "초대 · 참가자";
+    $("#invite-manage").textContent = exchange.isHost ? "초대 / 방 관리" : "초대 / 참가자";
     $("#start-exchange").hidden = !exchange.isHost || Boolean(exchange.startedAt);
     $("#start-exchange").disabled = startingExchange || exchange.members.length < 2;
   }
@@ -1116,7 +1116,7 @@ peerDialog.addEventListener("close", () => { profileRequest++; });
 async function openPeerProfile(slot) {
   const request = ++profileRequest;
   const status = $("#peer-status");
-  $("#peer-title").textContent = memberName(slot) + " · 프로필";
+  $("#peer-title").textContent = memberName(slot) + " / 프로필";
   $("#peer-content").hidden = true;
   $("#peer-bio").textContent = "";
   $("#peer-name").textContent = "";
@@ -1126,7 +1126,7 @@ async function openPeerProfile(slot) {
   portraitContext.clearRect(0, 0, portrait.width, portrait.height);
   $("#peer-books").replaceChildren();
   $("#peer-book-detail").textContent = "";
-  status.textContent = "불러오는 중…";
+  status.textContent = "불러오는 중...";
   peerDialog.showModal();
   try {
     const profile = await peerProfile(exchange, slot);
