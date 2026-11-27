@@ -1,3 +1,4 @@
+import { encodeCover, coverPayloadLimit } from "./cover-image.mjs";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFileSync, renameSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -26,6 +27,16 @@ function reject(message, status = 400) {
 }
 function clean(value, limit) {
   return typeof value === "string" ? value.trim().slice(0, limit) : "";
+}
+function updateCover(room, pixels) {
+  if (pixels === undefined) return;
+  if (pixels === null) {
+    delete room.cover;
+    return;
+  }
+  const cover = encodeCover(pixels);
+  if (!cover) reject("표지 이미지를 확인해 주세요.");
+  room.cover = { hash: cover.hash, png: cover.image.toString("base64") };
 }
 function roomOptions(input, minimum = 2) {
   const title = clean(input.title, 80);
@@ -105,8 +116,9 @@ function demoViewers(room, token) {
 }
 function view(room, token, viewers = demoViewers(room, token)) {
   const me = room.members.findIndex(person => person.token === token);
-  const { members, hostId = members[0].id, ...details } = room;
+  const { cover, members, hostId = members[0].id, ...details } = room;
   return {
+    coverUrl: cover ? "/api/exchanges/" + room.code + "/covers/" + cover.hash : null,
     ...(me >= 0 ? details : {
       code: room.code, title: room.title, author: room.author, theme: room.theme,
       capacity: room.capacity, startedAt: room.startedAt, completedAt: room.completedAt,
@@ -127,11 +139,11 @@ function persist(next) {
   renameSync(dataFile + ".tmp", dataFile);
   rooms = next;
 }
-async function body(request) {
+async function body(request, limit = 10000) {
   let data = "";
   for await (const chunk of request) {
     data += chunk;
-    if (data.length > 10_000) reject("입력 내용이 너무 길어요.", 413);
+    if (data.length > limit) reject("입력 내용이 너무 길어요.", 413);
   }
   try {
     return JSON.parse(data);
@@ -170,6 +182,13 @@ export async function exchangeApi(request, response, url) {
       return send(200, rooms.profiles?.[target.profileId]?.profilePublic
         ? previewProfile(target.profileId) : { profilePublic: false });
     }
+    const coverPath = /^\/api\/exchanges\/([A-F0-9]{8})\/covers\/([a-f0-9]{64})$/.exec(url.pathname);
+    if (coverPath && request.method === "GET") {
+      const cover = rooms[coverPath[1]]?.cover;
+      if (cover?.hash !== coverPath[2]) reject("표지를 찾을 수 없어요.", 404);
+      response.writeHead(200, { "Content-Type": "image/png", "X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=3600" });
+      return response.end(Buffer.from(cover.png, "base64"));
+    }
     const match = /^\/api\/exchanges(?:\/([A-F0-9]{8})(?:\/(join|start|finish|review|appearance|settings|order))?)?$/.exec(url.pathname);
     if (!match) reject("방을 찾을 수 없어요.", 404);
     const [, code, action] = match;
@@ -192,13 +211,14 @@ export async function exchangeApi(request, response, url) {
       return send(200, view(rooms[code], actingToken, viewers));
     }
     if (request.method !== "POST" || (code && !action)) reject("지원하지 않는 요청이에요.", 405);
-    const input = await body(request);
+    const input = await body(request, !code || action === "settings" ? coverPayloadLimit : 10000);
     if (!input || typeof input !== "object") reject("입력 내용을 확인해 주세요.");
     if (!code) {
       if (typeof input.demo === "string") return send(201, demoRoom(input.demo, input.appearance, profileId));
       const options = roomOptions(input);
       const host = { ...member("소이", input.appearance), profileId };
       const room = { ...options, code: inviteCode(), members: [host], createdAt: new Date().toISOString() };
+      updateCover(room, input.coverPixels);
       save(room);
       return send(201, { room: view(room, host.token), token: host.token });
     }
@@ -227,6 +247,7 @@ export async function exchangeApi(request, response, url) {
       if (!isHost) reject("방장만 방 옵션을 수정할 수 있어요.", 403);
       if (room.startedAt) reject("교환독서를 시작한 뒤에는 방 옵션을 수정할 수 없어요.", 409);
       Object.assign(room, roomOptions(input, room.members.length));
+      updateCover(room, input.coverPixels);
     } else if (action === "order") {
       if (!isHost) reject("방장만 독서 순서를 바꿀 수 있어요.", 403);
       if (room.startedAt) reject("교환독서를 시작한 뒤에는 순서를 바꿀 수 없어요.", 409);

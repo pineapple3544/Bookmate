@@ -3,11 +3,16 @@ import { appearance, appearanceSchema, inheritedAppearance } from "./appearance.
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { PrismaClient, Prisma } from "@prisma/client";
 import { ApiFailure } from "./errors.js";
+import { coverPayloadLimit, encodeCover } from "../../room-prototype/cover-image.mjs";
 type Tx = Prisma.TransactionClient;
 const fail = (status: number, message: string): never => {
   throw new ApiFailure(status, "EXCHANGE_ERROR", message);
 };
+function checkedCover(value: unknown) {
+  return encodeCover(value) ?? fail(400, "표지 이미지를 확인해 주세요.");
+}
 const included = {
+  cover: { select: { hash: true } },
   members: {
     orderBy: { readingOrder: "asc" as const },
     include: { user: { select: { id: true, nickname: true } } },
@@ -37,6 +42,7 @@ function view(room: any, uid: string) {
     title: room.bookTitle,
     author: room.author,
     theme: room.theme,
+    coverUrl: room.cover ? "/api/v1/exchanges/" + room.exchangeCode + "/covers/" + room.cover.hash : null,
     capacity: room.maxMembers,
     createdAt: room.createdAt,
     startedAt: room.startedAt,
@@ -129,11 +135,13 @@ export function registerExchanges(
   app.post<{ Body: Record<string, any> }>(
     "/api/v1/exchanges",
     {
+      bodyLimit: coverPayloadLimit,
       schema: {
         body: {
           type: "object",
           required: ["title", "capacity"],
           properties: {
+            coverPixels: { type: ["string", "null"] },
             title: { type: "string", maxLength: 80 },
             author: { type: "string", maxLength: 50 },
             capacity: {
@@ -147,11 +155,13 @@ export function registerExchanges(
     async (req, reply) => {
       const uid = await authenticate(req),
         o = options(req.body);
+      const cover = req.body.coverPixels == null ? undefined : checkedCover(req.body.coverPixels);
       const room = await db.$transaction(async (tx) => {
         return tx.room.create({
           data: {
             title: o.title,
             bookTitle: o.title,
+            ...(cover ? { cover: { create: cover } } : {}),
             author: o.author,
             theme: o.theme,
             maxMembers: o.capacity,
@@ -177,6 +187,19 @@ export function registerExchanges(
     required: ["code"],
     properties: { code: { type: "string", pattern: "^[A-F0-9]{8}$" } },
   };
+  app.get<{ Params: { code: string; hash: string } }>(
+    "/api/v1/exchanges/:code/covers/:hash", async (req, reply) => {
+      await authenticate(req);
+      const { code, hash } = req.params;
+      if (!/^[A-F0-9]{8}$/.test(code) || !/^[a-f0-9]{64}$/.test(hash)) return reply.code(404).send();
+      const cover = await db.roomCover.findFirst({
+        where: { room: { exchangeCode: code }, hash }, select: { image: true },
+      });
+      if (!cover) return reply.code(404).send();
+      return reply.type("image/png").header("Cache-Control", "private, max-age=3600")
+        .header("X-Content-Type-Options", "nosniff").send(Buffer.from(cover.image));
+    },
+  );
   app.get<{ Params: { code: string } }>(
     "/api/v1/exchanges/:code",
     {
@@ -194,6 +217,7 @@ export function registerExchanges(
   }>(
     "/api/v1/exchanges/:code/:action",
     {
+      bodyLimit: coverPayloadLimit,
       schema: {
         params: {
           ...params,
@@ -265,6 +289,13 @@ export function registerExchanges(
             if (room.startedAt)
               fail(409, "교환독서를 시작한 뒤에는 방 옵션을 수정할 수 없어요.");
             const o = options(input, Math.max(2, members.length));
+            if (input.coverPixels === null) {
+              await tx.roomCover.deleteMany({ where: { roomId: room.id } });
+            } else if (input.coverPixels !== undefined) {
+              const cover = checkedCover(input.coverPixels);
+              await tx.roomCover.upsert({ where: { roomId: room.id },
+                create: { roomId: room.id, ...cover }, update: cover });
+            }
             await tx.room.update({
               where: { id: room.id },
               data: {

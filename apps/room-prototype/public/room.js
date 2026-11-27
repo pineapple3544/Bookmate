@@ -9,6 +9,7 @@ import { createRecords } from "./records.js";
 import { localMode } from "./local-transport.js";
 import { createChat } from "./chat.js";
 import { isRating, setupRating } from "./rating.js";
+import { showCover } from "./cover-editor.js";
 import { exchangeCode, exchangeRequest, exchangeUrl, themes } from "./exchange-client.js";
 import { drawAvatar, normalizeAppearance } from "./avatar.js";
 import { appearanceWithPet, bookPetId, createWardrobe, drawBookPet, equippedPet, loadPets, petCollectionKeyFor, readPets } from "./wardrobe.js";
@@ -94,6 +95,7 @@ if (exchange) {
   bookDetail.querySelector("h2").textContent = exchange.title;
   bookDetail.querySelector(".cover span").textContent = exchange.title;
   bookDetail.querySelector(".cover small").textContent = exchange.author;
+  showCover(bookDetail.querySelector(".cover"), exchange.coverUrl);
   bookDetail.querySelector(".cover").style.backgroundColor = currentBook.color; // background-image(질감)는 유지
 }
 const petCollectionKey = petCollectionKeyFor(serverMode && account?.id);
@@ -1410,7 +1412,7 @@ update();
 function applyExchange(next) {
   if (next.version < exchange.version) return;
   if (exchange.capacity !== next.capacity || exchange.title !== next.title ||
-      exchange.author !== next.author || exchange.theme !== next.theme ||
+      exchange.author !== next.author || exchange.theme !== next.theme || exchange.coverUrl !== next.coverUrl ||
       exchange.members.some((person, i) => person.id !== next.members[i]?.id)) {
     location.reload();
     return;

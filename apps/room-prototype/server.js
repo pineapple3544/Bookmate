@@ -38,7 +38,7 @@ routes.set("/legacy-notes.js", [
   "text/javascript; charset=utf-8",
 ]);
 routes.set("/records.js", ["records.js", "text/javascript; charset=utf-8"]);
-for(const name of ["motion-peers","record-bridge","record-storage","record-protocol","shared-records","p2p-records"])routes.set("/"+name+".js",[name+".js","text/javascript; charset=utf-8"]);
+for(const name of ["cover-editor","motion-peers","record-bridge","record-storage","record-protocol","shared-records","p2p-records"])routes.set("/"+name+".js",[name+".js","text/javascript; charset=utf-8"]);
 const server = createServer(async (request, response) => {
   const url = new URL(request.url, "http://localhost");
   if (url.pathname === "/runtime-config.json") {
@@ -84,8 +84,9 @@ const server = createServer(async (request, response) => {
       },
       (result) => {
         response.writeHead(result.statusCode ?? 502, {
-          "content-type": "application/json; charset=utf-8",
-          "cache-control": "no-store",
+          "content-type": result.headers["content-type"] ?? "application/json; charset=utf-8",
+          "cache-control": result.headers["cache-control"] ?? "no-store",
+          "x-content-type-options": "nosniff",
           ...(result.headers["set-cookie"]
             ? { "set-cookie": result.headers["set-cookie"] }
             : {}),

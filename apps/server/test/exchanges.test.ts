@@ -282,6 +282,25 @@ test(
         assert.equal((await call("POST", url + "/start", a.cookie, {})).statusCode, 200);
         return url;
       }
+      // Changing text or sending an old client payload must preserve the stored cover.
+      const settings = { title: "표지", author: "저자", capacity: 3, theme: "plum" };
+      const pixels = Buffer.alloc(240 * 330 * 3, 175).toString("base64");
+      assert.equal((await call("POST", newPath + "/settings", b.cookie, { ...settings, coverPixels: pixels })).statusCode, 403);
+      const painted = await call("POST", newPath + "/settings", a.cookie, { ...settings, coverPixels: pixels });
+      assert.equal(painted.statusCode, 200, painted.body);
+      const asset = painted.json().room.coverUrl.replace("/api/v1", "");
+      assert.equal((await call("GET", asset)).statusCode, 401);
+      const original = await call("GET", asset, b.cookie);
+      assert.equal(original.headers["content-type"], "image/png");
+      assert.equal(original.rawPayload.readUInt32BE(20), 330);
+      assert.equal((await call("POST", newPath + "/settings", a.cookie, { ...settings, coverPixels: "bad" })).statusCode, 400);
+      assert.equal((await call("POST", newPath + "/settings", a.cookie, settings)).json().room.coverUrl, painted.json().room.coverUrl);
+      const replaced = await call("POST", newPath + "/settings", a.cookie, { ...settings, coverPixels: Buffer.alloc(240 * 330 * 3, 125).toString("base64") });
+      assert.notEqual(replaced.json().room.coverUrl, painted.json().room.coverUrl);
+      assert.equal((await call("GET", asset, a.cookie)).statusCode, 404);
+      assert.equal((await call("POST", newPath + "/settings", a.cookie, { ...settings, coverPixels: null })).json().room.coverUrl, null);
+      assert.equal(await db.roomCover.count({ where: { roomId: newRoom.id } }), 0);
+
       const lastSeat = await startTwo(3);
       const contenders = await Promise.all([c, fourth].map(user => call("POST", lastSeat + "/join", user.cookie, {})));
       assert.deepEqual(contenders.map(r => r.statusCode).sort(), [200, 409]);

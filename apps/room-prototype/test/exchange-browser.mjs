@@ -73,14 +73,37 @@ try {
   assert.equal(await a.locator('#create-form [name="name"]').count(), 0);
   await a.locator('#create-form [name="title"]').fill("임시 문구1");
   await a.locator('#create-form [name="author"]').fill("임시 문구2");
+  const fixture = await a.evaluate(() => {
+    const canvas = document.createElement("canvas"); canvas.width = 720; canvas.height = 330;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#22bb66"; ctx.fillRect(0, 0, 360, 330);
+    ctx.fillStyle = "#4b31cf"; ctx.fillRect(360, 0, 360, 330);
+    return canvas.toDataURL().split(",")[1];
+  });
+  await a.locator("#cover-file").setInputFiles({name:"book.png", mimeType:"image/png", buffer:Buffer.from(fixture,"base64")});
+  const preview = a.locator("#cover-preview");
+  await preview.locator("canvas").waitFor();
+  const boundsCover = await preview.boundingBox();
+  await a.mouse.move(boundsCover.x + 10, boundsCover.y + 50);
+  await a.mouse.down(); await a.mouse.move(boundsCover.x + boundsCover.width - 5, boundsCover.y + 50); await a.mouse.up();
+  const sample = await preview.locator("canvas").evaluate(el => [...el.getContext("2d").getImageData(120, 30, 1, 1).data]);
+  assert.deepEqual(sample, [34,187,102,255]);
   await a.locator('#create-form [name="capacity"]').selectOption("4");
   await a.locator('#create-form [type="submit"]').click();
   await a.waitForURL(/code=[A-F0-9]{8}/);
   const code = new URL(a.url()).searchParams.get("code");
   await a.waitForURL(/room\.html/);
   await a.locator("#invite-manage").waitFor();
+  const coverUrl = await a.locator(".book-detail .cover-photo img").getAttribute("src");
+  const serverCover = await a.request.get(base + coverUrl);
+  assert.equal(serverCover.headers()["content-type"], "image/png");
+  assert.equal((await serverCover.body()).readUInt32BE(16), 240);
   assert.ok(await a.locator("#start-exchange").isDisabled());
   assert.equal(await a.locator("#holder").textContent(), "시작 전");
+  await a.goto(base + "/");
+  await a.locator(".room-card img").waitFor();
+  assert.equal(await a.locator(".room-card img").getAttribute("src"), coverUrl);
+  await a.locator(".room-card").click();
   const b = await actor(2, "/?code=" + code);
   await b.locator("#join-form").waitFor();
   assert.equal(await b.locator('#join-form [name="name"]').count(), 0);
@@ -89,11 +112,21 @@ try {
   await b.locator("#code-form button").click();
   await b.locator("#join-form button").click();
   await b.waitForURL(/room\.html/);
+  await b.locator(".book-detail .cover-photo img").waitFor();
+  assert.equal(await b.locator(".book-detail .cover-photo img").getAttribute("src"), coverUrl);
   await a.waitForFunction(() => document.querySelectorAll(".member").length === 2);
   await a.locator("#invite-manage").click();
   await a.waitForFunction(
     () => document.querySelector("#waiting-count").textContent === "참가자 2/4",
   );
+  await a.locator("#edit-room").click();
+  assert.equal(await a.locator("#cover-preview img").getAttribute("src"), coverUrl);
+  await a.locator("#cover-remove").click();
+  assert.equal(await a.locator("#cover-preview .cover-photo").count(), 0);
+  await a.locator("#room-settings [data-close]").click();
+  await a.locator("#edit-room").click();
+  assert.equal(await a.locator("#cover-preview img").getAttribute("src"), coverUrl);
+  await a.locator("#room-settings [data-close]").click();
   await a.locator(".member-drag").nth(1).press("ArrowUp");
   await a.waitForFunction(
     () => document.querySelector(".waiting-name").textContent === "사용자 2",
@@ -214,6 +247,7 @@ try {
   await finish(c, 4, "마지막 독자");
   await a.goto(base + "/?screen=shelf");
   await a.locator(".shelf-book").click();
+  assert.equal(await a.locator("#shelf-cover img").getAttribute("src"), coverUrl);
   await a.locator("#edit-shelf-review").click();
   await a.locator('#shelf-review [name="review"]').fill("임시 문구6");
   await a.locator("#shelf-review button").click();
@@ -227,6 +261,7 @@ try {
   const download = await downloadPromise;
   assert.ok(download.suggestedFilename().endsWith(".png"));
   assert.equal(await download.failure(), null);
+  assert.deepEqual(await b.locator("#ticket-preview").evaluate(el => [...el.getContext("2d").getImageData(125, 83, 1, 1).data]), [34,187,102,255]);
   for (const width of [390, 1440]) {
     await b.setViewportSize({ width, height: 900 });
     assert.ok(

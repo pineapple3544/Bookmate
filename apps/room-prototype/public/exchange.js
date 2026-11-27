@@ -1,3 +1,4 @@
+import { coverEditor, showCover } from "./cover-editor.js";
 import { serverMode, serverAvailable, localExchangeAvailable, ensureAccount, account } from "./account.js";
 import { exchangeCode as code, exchangeRequest, exchangeUrl, myExchanges, getDefaultAppearance, saveDefaultAppearance, themes } from "./exchange-client.js";
 import { drawAvatar, normalizeAppearance } from "./avatar.js";
@@ -39,9 +40,13 @@ function link(text, href, style = "secondary") {
 }
 function book(room, subtitle) {
   const wrap = node("div", "", "exchange-book");
-  const cover = node("span", room.title, "exchange-cover");
+  const cover = node("div", room.title, "exchange-cover");
   cover.setAttribute("aria-hidden", "true");
   cover.style.backgroundColor = themes[room.theme];
+  if (room.coverUrl) {
+    cover.replaceChildren(node("strong", room.title), node("small", room.author));
+    showCover(cover, room.coverUrl);
+  }
   const details = node("div");
   details.append(node("h2", room.title), node("p", [room.author, subtitle].filter(Boolean).join(" · "), "muted"));
   wrap.append(cover, details);
@@ -51,7 +56,7 @@ function form(selector, action, feedback = status) {
   const element = $(selector);
   element.addEventListener("submit", async event => {
     event.preventDefault();
-    const submit = element.querySelector("button");
+    const submit = element.querySelector('button[type="submit"], button:not([type])');
     submit.disabled = true;
     feedback.textContent = "";
     try {
@@ -104,7 +109,7 @@ function waiting(initial) {
   const settingsForm = $("#create-form");
   settingsForm.querySelector('[type="submit"]').textContent = "변경사항 저장";
   settingsStatus.after(settingsForm);
-  const updateCover = setupRoomOptions(settingsForm);
+  const cover = setupRoomOptions(settingsForm);
   let refreshing = false;
   let changing = false;
   let revision = 0;
@@ -178,7 +183,7 @@ function waiting(initial) {
     }
   }
   form("#create-form", async data => {
-    await changeRoom("settings", data);
+    await changeRoom("settings", { ...data, ...cover.payload() });
     settings.close();
     notifySaved("방 옵션을 저장했어요.");
   }, settingsStatus);
@@ -250,7 +255,7 @@ function waiting(initial) {
         settingsForm.elements.namedItem(key).value = value;
       }
       settingsStatus.textContent = "";
-      updateCover();
+      cover.reset(room.coverUrl);
       settings.showModal();
     };
     const start = node("button", "교환독서 시작", "button primary");
@@ -324,7 +329,7 @@ function history(room) {
   showReview();
 }
 
-function ticket(room) {
+async function ticket(room) {
   const canvas = $("#ticket-preview");
   const ctx = canvas.getContext("2d");
   const ink = "#fff6e6";
@@ -342,6 +347,23 @@ function ticket(room) {
   ctx.beginPath();
   ctx.roundRect(59, 53, 166, 216, [5, 16, 16, 5]);
   ctx.fill();
+  if (room.coverUrl) {
+    const download = $("#ticket-download");
+    download.disabled = true;
+    const picture = new Image(); picture.src = room.coverUrl;
+    try {
+      await picture.decode();
+      ctx.save(); ctx.clip();
+      ctx.drawImage(picture, 59, 53, 166, 216);
+      const shade = ctx.createLinearGradient(0, 136, 0, 269);
+      shade.addColorStop(0, "transparent"); shade.addColorStop(1, "#17100ef0");
+      ctx.fillStyle = shade; ctx.fillRect(59, 136, 166, 133); ctx.restore();
+    } catch {
+      status.textContent = "표지를 불러오지 못했어요. 다시 열어 주세요.";
+      return;
+    }
+    download.disabled = false;
+  }
   ctx.fillStyle = "#0000004d";
   ctx.fillRect(59, 53, 10, 216);
   ctx.fillStyle = "#ffffff26";
@@ -369,7 +391,7 @@ function ticket(room) {
       ctx.fillText(row + (i === limit - 1 && rows.length > limit ? "…" : ""), x, y + i * size * 1.3, width);
     }
   }
-  text(room.title, 84, 108, 21, 122, 4, "#f3e7cf", "serif");
+  text(room.title, 84, room.coverUrl ? 190 : 108, room.coverUrl ? 17 : 21, 122, room.coverUrl ? 2 : 4, "#f3e7cf", "serif");
   text(room.author, 84, 236, 14, 122, 1, "#d9bf86", "serif");
   text("EXCHANGE READING", 266, 88, 23, 600, 1, muted);
   text(room.title, 266, 149, 43, 628, 2, ink, "serif");
@@ -428,6 +450,13 @@ async function shelf() {
     button.onclick = () => {
       selected = room;
       $("#shelf-title").textContent = room.title;
+      const shelfCover = $("#shelf-cover");
+      shelfCover.replaceChildren();
+      if (room.coverUrl) {
+        const front = book(room, "").firstElementChild;
+        front.classList.add("preview-book");
+        shelfCover.append(front);
+      }
       historyLink.href = exchangeUrl(room.code, "history");
       actions.showModal();
     };
@@ -483,8 +512,9 @@ function setupRoomOptions(create) {
   }
   create.addEventListener("input", updateCover);
   create.addEventListener("change", updateCover);
+  const editor = coverEditor(create);
   updateCover();
-  return updateCover;
+  return { payload: editor.payload, reset(source) { editor.reset(source); updateCover(); } };
 }
 
 async function profileView() {
@@ -536,8 +566,8 @@ async function profileView() {
 
 function createRoom() {
   $("#create-view").hidden = false;
-  setupRoomOptions($("#create-form"));
-  form("#create-form", async data => { enterNewRoom(await exchangeRequest("", "", data)); });
+  const cover = setupRoomOptions($("#create-form"));
+  form("#create-form", async data => { enterNewRoom(await exchangeRequest("", "", { ...data, ...cover.payload() })); });
 }
 
 async function openDemo() {
