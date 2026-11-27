@@ -16,7 +16,7 @@
 
 **[🔗 ssubookmate.duckdns.org 에서 바로 써보기](https://ssubookmate.duckdns.org/)**
 
-<img src="docs/screenshots/reading-room.png" alt="네 명이 모인 픽셀 독서방에서 채팅하는 모습" width="900">
+<img src="docs/screenshots/reading-room.png" alt="네 명이 모여 함께 읽고 있는 픽셀 독서방" width="900">
 
 </div>
 
@@ -74,7 +74,7 @@
 
 | 히스토리와 완료 티켓 | 내 서재 |
 | :---: | :---: |
-| <img src="docs/screenshots/history-ticket.png" alt="감상평 히스토리와 완료 티켓" width="520"> | <img src="docs/screenshots/bookshelf.png" alt="내 서재에 꽂힌 책" width="300"> |
+| <img src="docs/screenshots/history-ticket.png" alt="감상평 히스토리와 완료 티켓" width="520"> | <img src="docs/screenshots/bookshelf.png" alt="완독한 책이 꽂힌 내 서재" width="300"><br><img src="docs/screenshots/bookshelf-book.png" alt="서재에서 책을 눌렀을 때" width="300"> |
 | 참가자별 감상평을 넘겨 보고, 함께 읽은 사람과 완료 날짜가 적힌 티켓을 PNG로 저장해요. | 완독한 책이 책장에 꽂혀요. 책을 누르면 감상평을 고치거나 히스토리로 이동해요. |
 
 ### 7. 방 나가기
