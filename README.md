@@ -56,6 +56,11 @@
 | <img src="docs/screenshots/room-seated.png" alt="의자에 앉아 채팅하는 독서방" width="520"> | <img src="docs/screenshots/profile-peek.png" alt="다른 참가자의 프로필과 서재" width="260"> |
 | 방을 만들면 바로 입장하고, 초대받은 친구는 문을 열고 걸어 들어와요. 방향키나 클릭으로 움직이고, 의자 근처에서 **E**를 누르면 앉아요. 채팅은 머리 위 말풍선으로도 보이고, 오른쪽에서 현재 책 소유자와 참가자 상태를 확인해요. | 다른 참가자에게 다가가 **E**를 누르면 그 사람의 상태 메시지와 서재(완독한 책)를 볼 수 있어요. |
 
+| 채팅 | |
+| :---: | :---: |
+| <img src="docs/screenshots/chat-hello.png" alt="의자에 앉아 인사하는 채팅 말풍선" width="420"> | <img src="docs/screenshots/chat-book.png" alt="이번에 읽을 책을 채팅으로 알리는 모습" width="420"> |
+| 메시지를 보내면 내 캐릭터 머리 위에 말풍선으로 떠요. | 채팅 기록은 서버에 저장돼서, 나중에 들어온 사람도 이전 대화를 볼 수 있어요. |
+
 ### 4. 페이지 기록
 
 | 기록 올리기 | 댓글과 그림 |
@@ -74,7 +79,7 @@
 
 | 히스토리와 완료 티켓 | 내 서재 |
 | :---: | :---: |
-| <img src="docs/screenshots/history-ticket.png" alt="감상평 히스토리와 완료 티켓" width="520"> | <img src="docs/screenshots/bookshelf.png" alt="완독한 책이 꽂힌 내 서재" width="300"><br><img src="docs/screenshots/bookshelf-book.png" alt="서재에서 책을 눌렀을 때" width="300"> |
+| <img src="docs/screenshots/history-ticket.png" alt="감상평 히스토리와 완료 티켓" width="520"><br><img src="docs/screenshots/history-review.png" alt="다른 참가자의 감상평을 넘겨 보는 히스토리" width="520"> | <img src="docs/screenshots/bookshelf.png" alt="완독한 책이 꽂힌 내 서재" width="300"><br><img src="docs/screenshots/bookshelf-book.png" alt="서재에서 책을 눌렀을 때" width="300"> |
 | 참가자별 감상평을 넘겨 보고, 함께 읽은 사람과 완료 날짜가 적힌 티켓을 PNG로 저장해요. | 완독한 책이 책장에 꽂혀요. 책을 누르면 감상평을 고치거나 히스토리로 이동해요. |
 
 ### 7. 방 나가기
