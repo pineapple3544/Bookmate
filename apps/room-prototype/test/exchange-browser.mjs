@@ -73,10 +73,14 @@ try {
   assert.equal(await a.locator('#create-form [name="name"]').count(), 0);
   await a.locator('#create-form [name="title"]').fill("임시 문구1");
   await a.locator('#create-form [name="author"]').fill("임시 문구2");
-  await a.locator('#create-form [name="capacity"]').selectOption("2");
+  await a.locator('#create-form [name="capacity"]').selectOption("4");
   await a.locator('#create-form [type="submit"]').click();
   await a.waitForURL(/code=[A-F0-9]{8}/);
   const code = new URL(a.url()).searchParams.get("code");
+  await a.waitForURL(/room\.html/);
+  await a.locator("#invite-manage").waitFor();
+  assert.ok(await a.locator("#start-exchange").isDisabled());
+  assert.equal(await a.locator("#holder").textContent(), "시작 전");
   const b = await actor(2, "/?code=" + code);
   await b.locator("#join-form").waitFor();
   assert.equal(await b.locator('#join-form [name="name"]').count(), 0);
@@ -84,8 +88,11 @@ try {
   await b.locator("#invite-code").fill(code.toLowerCase());
   await b.locator("#code-form button").click();
   await b.locator("#join-form button").click();
+  await b.waitForURL(/room\.html/);
+  await a.waitForFunction(() => document.querySelectorAll(".member").length === 2);
+  await a.locator("#invite-manage").click();
   await a.waitForFunction(
-    () => document.querySelector("#waiting-count").textContent === "참가자 2/2",
+    () => document.querySelector("#waiting-count").textContent === "참가자 2/4",
   );
   await a.locator(".member-drag").nth(1).press("ArrowUp");
   await a.waitForFunction(
@@ -95,8 +102,9 @@ try {
   await a.waitForFunction(
     () => document.querySelector(".waiting-name").textContent === "사용자 1",
   );
-  await a.getByRole("button", { name: "교환독서 시작", exact: true }).click();
   await a.getByRole("link", { name: "독서방 입장", exact: true }).click();
+  await a.locator("#start-exchange").click();
+  await a.locator("#complete").waitFor();
   let receivedMoves = 0;
   b.on("websocket", socket => socket.on("framereceived", ({ payload }) => {
     if (socket.url().endsWith("/live") && JSON.parse(payload).type === "move") receivedMoves++;
@@ -169,7 +177,41 @@ try {
   assert.ok(packets > 0 && rendered > packets + 5, "observer should render intermediate positions between packets");
   await finish(a, 4.5, "임시 문구4");
   await b.waitForFunction(() => !document.querySelector("#complete").disabled);
+  // Observe the actual painted door and the last avatar, on both sides of entry.
+  function watchDoor() {
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", watchDoor, { once: true });
+      return;
+    }
+    const canvas = document.querySelector("#room");
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    window.entryPixels = new Set();
+    window.entrySteps = new Set();
+    function sample() {
+      const pixel = ctx.getImageData(530, 108, 1, 1).data;
+      window.entryPixels.add([...pixel].slice(0, 3).join(","));
+      const labels = document.querySelectorAll(".avatar-label");
+      if (labels.length === 3) window.entrySteps.add(labels[2].style.top);
+      if (window.entrySteps.size < 30) requestAnimationFrame(sample);
+    }
+    requestAnimationFrame(sample);
+  }
+  const c = await actor(3, "/?code=" + code);
+  await a.evaluate(watchDoor);
+  await c.addInitScript(watchDoor);
+  await c.locator("#join-form button").click();
+  await c.waitForURL(/room\.html/);
+  for (const page of [a, c]) {
+    await page.waitForFunction(() => window.entryPixels?.has("35,44,41") && window.entrySteps.size >= 4);
+  }
+  await a.waitForFunction(() => document.querySelectorAll(".member").length === 3);
+  assert.equal(await a.locator(".member-name").last().textContent(), "사용자 3");
+  assert.equal(await a.locator("#holder").textContent(), "사용자 2");
+  await b.waitForFunction(() => document.querySelector(".room-count").textContent === "3명 온라인");
   await finish(b, 5, "임시 문구5");
+  await c.locator("#complete").waitFor();
+  await finish(c, 4, "마지막 독자");
   await a.goto(base + "/?screen=shelf");
   await a.locator(".shelf-book").click();
   await a.locator("#edit-shelf-review").click();
@@ -216,7 +258,7 @@ try {
   assert.deepEqual(errors, []);
   assert.deepEqual(legacyCalls, []);
   console.log(
-    "PASS UI: two real accounts, create/join/reorder/start, cross-context chat/presence/movement, finish/transfer, shelf/review/history/PNG, reload/logout, mobile layout",
+    "PASS UI: three real accounts, door entry, late join, create/join/reorder/start, cross-context chat/presence/movement, finish/transfer, shelf/review/history/PNG, reload/logout, mobile layout",
   );
 } finally {
   for (const context of contexts) await context.close();

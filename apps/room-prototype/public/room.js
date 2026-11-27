@@ -67,7 +67,7 @@ let exchange;
 if (exchangeCode) {
   try {
     exchange = await exchangeRequest(exchangeCode);
-    if (exchange.me < 0 || !exchange.startedAt) throw new Error("방에 참가한 뒤 입장해 주세요.");
+    if (exchange.me < 0) throw new Error("방에 참가한 뒤 입장해 주세요.");
   } catch (error) {
     const message = document.createElement("p");
     message.textContent = error.message;
@@ -98,7 +98,15 @@ if (exchange) {
 }
 const petCollectionKey = petCollectionKeyFor(serverMode && account?.id);
 let pets = loadPets(petCollectionKey);
-const capacity = exchange?.members.length ?? 4;
+const capacity = exchange?.capacity ?? 4;
+const door = { x: 518, y: 152 };
+const arrivals = new Map();
+const entryKey = "bookmate-entry:" + exchangeCode;
+const freshEntry = exchange && sessionStorage.getItem(entryKey) === exchange.members[exchange.me].id;
+if (freshEntry) sessionStorage.removeItem(entryKey);
+function doorstep(slot) {
+  return { x: door.x + (slot % 3 - 1) * 12, y: 184 + Math.floor(slot / 3) * 8, seat: null, done: false, page: 1, note: "" };
+}
 const petTrails = Array.from({ length: capacity }, () => []);
 const appearanceKeys = Array.from({ length: capacity }, (_, slot) =>
   "bookmate-avatar-v1" + roomSuffix + ":" + slot,
@@ -126,10 +134,11 @@ const demoSeats = [
   { x: 240, y: 304 },
   { x: 384, y: 304 },
 ];
-const seats = capacity > demoSeats.length ? Array.from({ length: capacity }, (_, index) => ({
+const seatLayout = capacity > demoSeats.length ? Array.from({ length: capacity }, (_, index) => ({
   x: 224 + 44 * Math.floor(index / 2),
   y: index % 2 === 0 ? 192 : 304,
 })) : demoSeats.slice(0, capacity);
+const seats = seatLayout.slice(0, exchange?.members.length ?? capacity);
 const obstacles = [
   { x: 0, y: 0, w: 640, h: 154 },
   { x: 0, y: 350, w: 86, h: 50 },
@@ -143,6 +152,7 @@ function initialState() {
   return {
     selected: exchange?.me ?? 0,
     holder: 0,
+    memberIds: exchange?.members.map(person => person.id),
     motion: !matchMedia("(prefers-reduced-motion: reduce)").matches,
     users: exchange ? seats.map(({ x, y }, seat) => ({
       x, y, seat, done: false, page: 1, note: "",
@@ -159,6 +169,7 @@ try {
   const saved = JSON.parse(localStorage.getItem(storageKey));
   if (
     saved &&
+    (!exchange || !saved.memberIds || saved.memberIds.every((id, index) => id === exchange.members[index]?.id)) &&
     Number.isInteger(saved.selected) &&
     saved.selected >= 0 &&
     saved.selected < capacity &&
@@ -189,7 +200,14 @@ try {
 } catch {
   /* A fresh local prototype works when storage is unavailable. */
 }
-if (exchange) state.selected = exchange.me;
+if (exchange) {
+  state.selected = exchange.me;
+  state.memberIds = exchange.members.map(person => person.id);
+  if (freshEntry) {
+    state.users[state.selected] = doorstep(state.selected);
+    arrivals.set(state.selected, performance.now());
+  }
+}
 // Render remote samples slightly behind arrival time to absorb normal packet jitter.
 const movementInterval = 100;
 const playbackDelay = movementInterval + 25;
@@ -502,7 +520,7 @@ function room(hour) {
   rect(0, 150, 640, 4, "#a07850");
   drawWindow(hour);
   shelf(184, 22, 174);
-  shelf(372, 22, 166);
+  shelf(372, 22, exchange ? 122 : 166);
   rect(557, 34, 51, 61, "#9b7753");
   rect(561, 38, 43, 53, "#c0b591");
   rect(566, 43, 33, 43, "#506465");
@@ -531,6 +549,30 @@ function room(hour) {
   shelf(565, 345, 75, 1);
   lamp(597, 341);
 }
+function drawEntrance(time) {
+  let opening = 0;
+  if (arrivals.size) displayUsers = displayUsers.slice();
+  for (const [slot, since] of arrivals) {
+    const t = Math.max(0, (time - since) / 900);
+    if (t >= 1 || !state.motion || matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      arrivals.delete(slot);
+      continue;
+    }
+    opening = Math.max(opening, Math.min(1, t * 5, (1 - t) * 5));
+    const user = displayUsers[slot];
+    const step = Math.min(1, Math.max(0, (t - 0.14) / 0.66));
+    displayUsers[slot] = { ...user, x: door.x + (user.x - door.x) * step,
+      y: door.y + (user.y - door.y) * step, seat: null };
+  }
+  const left = door.x - 17, top = door.y - 55;
+  rect(left - 2, top - 3, 38, 58, "#372c25");
+  rect(left, top, 34, 55, "#232c29");
+  const width = 34 - Math.round(opening * 27);
+  rect(left, top, width, 54, "#845b42");
+  outline(left + 2, top + 3, width - 5, 45, "#694833");
+  rect(left + width - 5, top + 30, 3, 3, "#dbc28c");
+  rect(left - 2, door.y, 38, 3, "#b28c63");
+}
 function chair(index) {
   const seat = seats[index];
   rect(seat.x - 15, seat.y - 6, 30, 19, "#3b3027");
@@ -545,7 +587,7 @@ function avatar(user, index, time) {
   const x = Math.round(user.x),
     y = Math.round(user.y);
   const step =
-    state.motion && (index === state.selected ? walking : remotePaths.has(index) && user.seat === null)
+    state.motion && (arrivals.has(index) || (index === state.selected ? walking : remotePaths.has(index) && user.seat === null))
       ? Math.round(Math.sin(time / 90) * 2)
       : 0;
   rect(x - 13, y + 1, 26, 5, "#27382d70");
@@ -601,23 +643,25 @@ function table() {
   rect(273, 242, 9, 12, "#d3c4a1");
   outline(282, 245, 4, 5, "#d3c4a1", 2);
 }
-const avatarLabels = state.users.map((_, index) => {
+function avatarLabel(index) {
   const element = document.createElement("span");
   element.className = "avatar-label";
   element.textContent = memberName(index);
   stage.append(element);
   return element;
-});
+}
+const avatarLabels = state.users.map((_, index) => avatarLabel(index));
 const readingBadge = document.createElement("span");
 readingBadge.className = "reading-badge";
 readingBadge.textContent = "독서중…";
-const petLabels = state.users.map(() => {
+function petLabel() {
   const label = document.createElement("span");
   label.className = "pet-book-label";
   label.hidden = true;
   stage.append(label);
   return label;
-});
+}
+const petLabels = state.users.map(petLabel);
 const compactLabels = matchMedia("(max-width: 520px), (min-width: 600px) and (max-width: 950px) and (max-height: 500px)");
 let inspectedSlot = -1;
 function label(user, index) {
@@ -706,6 +750,7 @@ function draw(time) {
   displayUsers = remotePaths.size
     ? state.users.map((user, slot) => displayPosition(user, slot, time))
     : state.users;
+  if (exchange) drawEntrance(time);
   syncInteractionFocus();
   const objects = displayUsers.map((user, index) => ({
     y: user.y,
@@ -836,6 +881,7 @@ function canOpenRecords() {
 function demoReceiptKey() {
   return "bookmate-reading-start:" + (exchange?.code ?? "free") + ":" + (exchange?.members[exchange.me].id ?? state.selected);
 }
+let startingExchange = false;
 function update() {
   if (exchange) {
     exchange.members.forEach((person, index) => {
@@ -858,7 +904,15 @@ function update() {
   $("#selected-label").textContent = memberName(state.selected);
   $("#action-state").textContent =
     user.seat !== null ? "착석" : walking ? "이동 중" : "이동 가능";
-  $("#holder").textContent = state.holder >= 0 ? memberName(state.holder) : "모두 완독";
+  $("#holder").textContent = state.holder >= 0 ? memberName(state.holder)
+    : exchange && !exchange.startedAt ? "시작 전" : "모두 완독";
+  if (exchange) {
+    $("#room-access").hidden = false;
+    $("#invite-manage").href = exchangeUrl(exchangeCode);
+    $("#invite-manage").textContent = exchange.isHost ? "초대 · 방 관리" : "초대 · 참가자";
+    $("#start-exchange").hidden = !exchange.isHost || Boolean(exchange.startedAt);
+    $("#start-exchange").disabled = startingExchange || exchange.members.length < 2;
+  }
   const isReading = state.selected === state.holder;
   const complete = $("#complete");
   complete.hidden = complete.disabled = !isReading;
@@ -1179,9 +1233,9 @@ $("#finish-form").addEventListener("submit", async event => {
   const submit = form.querySelector('[type="submit"]');
   submit.disabled = true;
   try {
-    exchange = await exchangeRequest(exchangeCode, "finish", {
+    applyExchange(await exchangeRequest(exchangeCode, "finish", {
       ...review, appearance: appearances[state.selected],
-    });
+    }));
     update();
     form.reset();
     $("#finish-dialog").close();
@@ -1207,7 +1261,7 @@ const wardrobe = createWardrobe($("#avatar-dialog"), {
   getPets: () => pets,
   async save(appearance, slot) {
     if (exchange) {
-      exchange = await exchangeRequest(exchangeCode, "appearance", appearance);
+      applyExchange(await exchangeRequest(exchangeCode, "appearance", appearance));
     } else {
       localStorage.setItem(appearanceKeys[slot], JSON.stringify(appearance));
     }
@@ -1301,6 +1355,7 @@ function tick(time) {
 }
 const live = exchange && serverMode ? createLiveRoom({
   room: exchange,
+  refreshMembers: refreshExchange,
   onPosition(slot, position, snap) {
     if (slot === state.selected) return;
     const user = state.users[slot];
@@ -1352,19 +1407,51 @@ const chat = createChat({
 window.addEventListener("pagehide", save);
 live?.publish(state.users[state.selected]);
 update();
+function applyExchange(next) {
+  if (next.version < exchange.version) return;
+  if (exchange.capacity !== next.capacity || exchange.title !== next.title ||
+      exchange.author !== next.author || exchange.theme !== next.theme ||
+      exchange.members.some((person, i) => person.id !== next.members[i]?.id)) {
+    location.reload();
+    return;
+  }
+  const previousCount = exchange.members.length;
+  Object.assign(exchange, next);
+  for (let slot = previousCount; slot < exchange.members.length; slot++) {
+    seats.push(seatLayout[slot]);
+    state.users.push(doorstep(slot));
+    state.memberIds.push(exchange.members[slot].id);
+    avatarLabels.push(avatarLabel(slot));
+    petLabels.push(petLabel());
+    roomPlayerSlots.push(slot);
+    arrivals.set(slot, performance.now());
+  }
+  update();
+}
+let fetchingExchange;
+function refreshExchange() {
+  if (!fetchingExchange) fetchingExchange = exchangeRequest(exchangeCode)
+    .then(next => { if (JSON.stringify(exchange) !== JSON.stringify(next)) applyExchange(next); })
+    .finally(() => { fetchingExchange = undefined; });
+  return fetchingExchange;
+}
 if (exchange) {
+  $("#start-exchange").onclick = async () => {
+    if (startingExchange) return;
+    startingExchange = true;
+    $("#start-exchange").disabled = true;
+    try { applyExchange(await exchangeRequest(exchangeCode, "start", {})); }
+    catch (error) { toast(error.message); }
+    finally { startingExchange = false; update(); }
+  };
   $("#reset").hidden = true;
   const refresh = setInterval(async () => {
     try {
-      const next = await exchangeRequest(exchangeCode);
-      if (JSON.stringify(exchange) !== JSON.stringify(next)) {
-        exchange = next;
-        update();
-      }
+      await refreshExchange();
     } catch {
       // Retain the last known turn while disconnected.
     }
-  }, serverMode ? Math.max(2500, capacity * 1000) : 2500);
+  }, serverMode ? Math.max(2500, exchange.members.length * 750) : 2500);
   addEventListener("pagehide", () => clearInterval(refresh), { once: true });
 }
 requestAnimationFrame(tick);

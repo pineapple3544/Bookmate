@@ -284,6 +284,9 @@ canvas {
   border-left: 1px solid var(--line);
   min-height: calc(100svh - 64px);
 }
+#room-access:not([hidden]) { display: flex; flex-wrap: wrap; gap: 6px; }
+#room-access > * { flex: 1 1 auto; }
+#room-access [hidden] { display: none; }
 .book-detail {
   display: flex;
   align-items: center;

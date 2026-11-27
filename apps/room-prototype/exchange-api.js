@@ -109,7 +109,7 @@ function view(room, token, viewers = demoViewers(room, token)) {
   return {
     ...(me >= 0 ? details : {
       code: room.code, title: room.title, author: room.author, theme: room.theme,
-      capacity: room.capacity, startedAt: room.startedAt,
+      capacity: room.capacity, startedAt: room.startedAt, completedAt: room.completedAt,
     }), ...(viewers.length ? { demoViewers: viewers } : {}), me, isHost: me >= 0 && members[me].id === hostId,
     members: members.map(({ token: secret, profileId, ...person }, index) =>
       me >= 0 ? { ...person, name: (profileId ? rooms.profiles?.[profileId]?.nickname ?? "소이" : person.name), review: room.completedAt || index === me ? person.review : undefined,
@@ -119,6 +119,7 @@ function view(room, token, viewers = demoViewers(room, token)) {
   };
 }
 function save(room) {
+  room.version = (rooms[room.code]?.version ?? 0) + 1;
   persist({ ...rooms, [room.code]: room });
 }
 function persist(next) {
@@ -207,7 +208,7 @@ export async function exchangeApi(request, response, url) {
     const now = new Date().toISOString();
     if (action === "join") {
       if (me >= 0) return send(200, { room: view(room, token), token });
-      if (room.startedAt || room.members.length >= room.capacity) reject("이미 시작했거나 인원이 찬 방이에요.", 409);
+      if (room.completedAt || room.members.length >= room.capacity) reject("완독했거나 인원이 찬 방이에요.", 409);
       const person = { ...member("소이", input.appearance), profileId };
       room.members.push(person);
       save(room);
@@ -219,7 +220,7 @@ export async function exchangeApi(request, response, url) {
     if (action === "start") {
       if (!isHost) reject("방장만 시작할 수 있어요.", 403);
       if (room.startedAt) return send(200, view(room, token));
-      if (room.members.length !== room.capacity) reject("참여 인원이 모두 모이면 시작할 수 있어요.", 409);
+      if (room.members.length < 2) reject("두 명부터 교환독서를 시작할 수 있어요.", 409);
       room.startedAt = now;
       room.members[0].receivedAt = now;
     } else if (action === "settings") {

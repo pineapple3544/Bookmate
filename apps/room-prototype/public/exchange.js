@@ -71,6 +71,13 @@ function duration(person) {
   const days = Math.round((end - start) / 86400000);
   return days === 0 ? "당일" : days + "일";
 }
+function pixelRoom(code) {
+  return "/room.html?code=" + encodeURIComponent(code) + (!serverMode ? "&local=1" : "");
+}
+function enterNewRoom(room) {
+  sessionStorage.setItem("bookmate-entry:" + room.code, room.members[room.me].id);
+  location.href = pixelRoom(room.code);
+}
 async function home() {
   $("#home-view").hidden = false;
   form("#code-form", ({ code }) => { location.href = exchangeUrl(code.trim().toUpperCase()); });
@@ -81,11 +88,11 @@ async function home() {
   if (!rooms.length) list.append(node("p", "방을 만들거나 초대 코드로 참가해 보세요.", "muted"));
   for (const room of rooms.sort((a,b) => b.createdAt.localeCompare(a.createdAt))) {
     const destination = room.completedAt ? exchangeUrl(room.code, "history")
-      : room.startedAt ? "/room.html?code=" + room.code + (!serverMode ? "&local=1" : "") : exchangeUrl(room.code);
+      : pixelRoom(room.code);
     const card = node("a", "", "exchange-card room-card");
     card.href = destination;
     const done = room.members.filter(person => person.finishedAt).length;
-    const subtitle = room.completedAt ? "교환독서 완료" : room.startedAt ? done + "/" + room.capacity + "명 완독" : "대기 중";
+    const subtitle = room.completedAt ? "교환독서 완료" : room.startedAt ? done + "/" + room.members.length + "명 완독" : "대기 중";
     card.append(book(room, subtitle));
     list.append(card);
   }
@@ -212,13 +219,13 @@ function waiting(initial) {
     try { await navigator.share({ title: initial.title + " 교환독서", url: invite }); }
     catch (error) { if (error.name !== "AbortError") await copyInvite(); }
   };
-  form("#join-form", data => changeRoom("join", data));
+  form("#join-form", async data => enterNewRoom(await exchangeRequest(code, "join", data)));
   function render(room) {
     if (JSON.stringify(renderedRoom) === JSON.stringify(room)) return;
     renderedRoom = room;
     $("#waiting-book").replaceChildren(book(room, "독서방"));
     $("#invite-panel").hidden = room.me < 0;
-    $("#join-form").hidden = room.me >= 0 || room.startedAt || room.members.length >= room.capacity;
+    $("#join-form").hidden = room.me >= 0 || room.completedAt || room.members.length >= room.capacity;
     $("#waiting-count").textContent = "참가자 " + room.members.length + "/" + room.capacity;
     roster.replaceChildren(...room.members.map((person, index) => {
       const row = node("li", "", "waiting-member");
@@ -230,13 +237,10 @@ function waiting(initial) {
     const actions = $("#waiting-actions");
     const hadEditFocus = document.activeElement?.id === "edit-room";
     actions.replaceChildren();
-    if (room.me < 0 && $("#join-form").hidden) actions.append(node("p", "이미 시작했거나 인원이 찬 방이에요."));
+    if (room.me < 0 && $("#join-form").hidden) actions.append(node("p", "완독했거나 인원이 찬 방이에요."));
     if (room.me < 0) return;
-    if (room.startedAt) {
-      actions.append(link("독서방 입장", "/room.html?code=" + code + (!serverMode ? "&local=1" : ""), "primary"));
-      return;
-    }
-    if (!room.isHost) return actions.append(node("p", "방장이 시작하면 독서방에 입장할 수 있어요.", "muted"));
+    actions.append(link("독서방 입장", pixelRoom(code), "primary"));
+    if (room.startedAt || !room.isHost) return;
     const edit = node("button", "방 옵션 수정", "button secondary");
     edit.id = "edit-room";
     edit.type = "button";
@@ -250,7 +254,7 @@ function waiting(initial) {
       settings.showModal();
     };
     const start = node("button", "교환독서 시작", "button primary");
-    start.disabled = room.members.length !== room.capacity;
+    start.disabled = room.members.length < 2;
     start.onclick = async () => {
       if (changing || drag) return;
       start.disabled = true;
@@ -533,7 +537,7 @@ async function profileView() {
 function createRoom() {
   $("#create-view").hidden = false;
   setupRoomOptions($("#create-form"));
-  form("#create-form", async data => { location.href = exchangeUrl((await exchangeRequest("", "", data)).code); });
+  form("#create-form", async data => { enterNewRoom(await exchangeRequest("", "", data)); });
 }
 
 async function openDemo() {

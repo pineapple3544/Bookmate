@@ -230,8 +230,8 @@ export function registerExchanges(
           person = members[me];
         if (action === "join") {
           if (person) return view(room, uid);
-          if (room.startedAt || members.length >= room.maxMembers)
-            fail(409, "이미 시작했거나 인원이 찬 방이에요.");
+          if (room.completedAt || members.length >= room.maxMembers)
+            fail(409, "완독했거나 인원이 찬 방이에요.");
           await tx.roomMember.create({
             data: {
               roomId: room.id,
@@ -249,8 +249,8 @@ export function registerExchanges(
             fail(403, "방장만 변경할 수 있어요.");
           if (action === "start") {
             if (room.startedAt) return view(room, uid);
-            if (members.length !== room.maxMembers)
-              fail(409, "참여 인원이 모두 모이면 시작할 수 있어요.");
+            if (members.length < 2)
+              fail(409, "두 명부터 교환독서를 시작할 수 있어요.");
             await tx.room.update({
               where: { id: room.id },
               data: { startedAt: new Date(), bookHolderId: members[0]!.userId },

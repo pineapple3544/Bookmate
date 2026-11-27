@@ -1,19 +1,22 @@
 import { apiRequest } from "./account.js";
 import { createMotionPeers } from "./motion-peers.js";
-export function createLiveRoom({ room, onPosition, onPresence, onStatus, onSeat, onSeatConflict }) {
+export function createLiveRoom({ room, refreshMembers, onPosition, onPresence, onStatus, onSeat, onSeatConflict }) {
   const subscribers = new Set();
   let snapshot;
   const emit = (data) => {
     for (const fn of subscribers) fn(data);
   };
-  const indices = new Map(room.members.map((m, i) => [m.id, i]));
+  const deferredPositions = new Map();
   let socket,
     timer,
     stopped = false,
     delay = 500,
     online = [],
     lastPosition;
-  const slot = (id) => indices.get(id);
+  const slot = id => {
+    const index = room.members.findIndex(member => member.id === id);
+    return index < 0 ? undefined : index;
+  };
   const message = (m) => ({ ...m, senderSlot: slot(m.senderId) });
   const sequences = new Map(), seats = new Map();
   let sequence = 0, checkpoint = 0, requestedSeat, claimSeq = 0;
@@ -26,9 +29,13 @@ export function createLiveRoom({ room, onPosition, onPresence, onStatus, onSeat,
         !Number.isSafeInteger(data.seq) || data.seq <= (sequences.get(peerId) ?? 0) ||
         !Number.isFinite(data.x) || data.x < 24 || data.x > 616 ||
         !Number.isFinite(data.y) || data.y < 160 || data.y > 376) return;
-    sequences.set(peerId, data.seq);
     const index = slot(endpoint.userId);
-    if (index !== undefined) onPosition(index, { x: data.x, y: data.y, seat: seats.get(index) ?? null }, snap);
+    if (index === undefined) {
+      if (data.seq > (deferredPositions.get(peerId)?.seq ?? 0)) deferredPositions.set(peerId, data);
+      return;
+    }
+    sequences.set(peerId, data.seq);
+    onPosition(index, { x: data.x, y: data.y, seat: seats.get(index) ?? null }, snap);
   }
   const motion = createMotionPeers({
     getConfig: () => apiRequest(`/api/v1/rooms/${room.id}/motion-rtc-config`),
@@ -89,6 +96,22 @@ export function createLiveRoom({ room, onPosition, onPresence, onStatus, onSeat,
           if (value.seq) position(value.fromPeerId, value, !previousOnline.includes(index));
           else onPosition(index, value, !previousOnline.includes(index));
         }
+        if (data.onlineUserIds.some(id => slot(id) === undefined)) {
+          refreshMembers().then(() => {
+            if (!snapshot) return;
+            online = snapshot.onlineUserIds.map(slot).filter(i => i !== undefined);
+            onPresence(online);
+            for (const [id, value] of Object.entries(snapshot.positions)) {
+              const index = slot(id);
+              if (index === undefined || index === room.me || previousOnline.includes(index)) continue;
+              seats.set(index, value.seat);
+              if (value.seq) position(value.fromPeerId, value, true);
+              else onPosition(index, value, true);
+            }
+            for (const [peerId, packet] of deferredPositions) position(peerId, packet, true);
+            deferredPositions.clear();
+          }).catch(() => {});
+        }
         if (first && lastPosition) publish(lastPosition, true);
       } else if (data.type === "motion-signal") {
         motion.handle(data);
@@ -112,6 +135,7 @@ export function createLiveRoom({ room, onPosition, onPresence, onStatus, onSeat,
     socket.onclose = (event) => {
       snapshot = undefined;
       motion.update(null);
+      deferredPositions.clear();
       sequences.clear();
       seats.clear();
       requestedSeat = undefined;
@@ -162,6 +186,7 @@ export function createLiveRoom({ room, onPosition, onPresence, onStatus, onSeat,
         options.method ?? "GET",
         body ? { id: body.id, text: body.text } : undefined,
       );
+      if (data.messages?.some(m => slot(m.senderId) === undefined)) await refreshMembers();
       return {
         ...data,
         ...(data.message ? { message: message(data.message) } : {}),

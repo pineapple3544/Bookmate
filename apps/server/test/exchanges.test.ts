@@ -273,6 +273,42 @@ test(
       const retried = (await call("POST", newPath + "/join", b.cookie, {})).json().room;
       assert.deepEqual(retried.members.map((m: any) => m.appearance), [frog, green]);
 
+      const fourth = await actor();
+      async function startTwo(capacity: number) {
+        const created = (await call("POST", "/exchanges", a.cookie, { title: "늦은 참가", capacity })).json().room;
+        rooms.push(created.id);
+        const url = "/exchanges/" + created.code;
+        assert.equal((await call("POST", url + "/join", b.cookie, {})).statusCode, 200);
+        assert.equal((await call("POST", url + "/start", a.cookie, {})).statusCode, 200);
+        return url;
+      }
+      const lastSeat = await startTwo(3);
+      const contenders = await Promise.all([c, fourth].map(user => call("POST", lastSeat + "/join", user.cookie, {})));
+      assert.deepEqual(contenders.map(r => r.statusCode).sort(), [200, 409]);
+      const joinedRoom = contenders.find(r => r.statusCode === 200)!.json().room;
+      assert.deepEqual(joinedRoom.members.map((m: any) => m.id), [a.id, b.id, contenders[0]!.statusCode === 200 ? c.id : fourth.id]);
+      assert.ok(joinedRoom.members[0].receivedAt);
+      assert.equal(joinedRoom.members[2].receivedAt, null);
+
+      const race = await startTwo(4);
+      await call("POST", race + "/finish", a.cookie, { rating: 5 });
+      const [lastReader, lateJoin] = await Promise.all([
+        call("POST", race + "/finish", b.cookie, { rating: 5 }),
+        call("POST", race + "/join", c.cookie, {}),
+      ]);
+      assert.equal(lastReader.statusCode, 200);
+      const afterRace = (await call("GET", race, a.cookie)).json().room;
+      if (afterRace.completedAt) {
+        assert.equal(lateJoin.statusCode, 409);
+        assert.equal(afterRace.members.length, 2);
+      } else {
+        assert.equal(lateJoin.statusCode, 200);
+        assert.equal(afterRace.members[2].id, c.id);
+        assert.ok(afterRace.members[2].receivedAt);
+        assert.ok((await call("POST", race + "/finish", c.cookie, { rating: 5 })).json().room.completedAt);
+      }
+      assert.equal((await call("POST", race + "/join", fourth.cookie, {})).statusCode, 409);
+
       const publicRoom = (await call("POST", "/rooms", b.cookie,
         { title: "서재", bookTitle: "책", visibility: "PUBLIC" })).json().room;
       rooms.push(publicRoom.id);
